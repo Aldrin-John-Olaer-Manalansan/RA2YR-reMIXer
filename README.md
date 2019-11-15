@@ -19,7 +19,9 @@
 
 ------------
 
-<center><b>Usage</b></center>
+<center><b>
+Usage
+</b></center>
 - Add a Target File - Browse a Target file with a respective extension(eg .mix) that will be added on the Target List ->
 
 - Add a Target Folder - Browse a folder and scans for any existing file that has the respective extension(eg .mix) to be added on the Target File List ->
