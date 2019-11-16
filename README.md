@@ -2,12 +2,14 @@
 
 ------------
 
-<center><b>About</b></center>
+<div align="center">
+<b>About</b></div>
 ***RA2YR MIX Unprotected Master is a powerful tool designed to UNPROTECT MIX file headers, these will allow any PROTECTED MIX files to be openable by XCC Mixer Utility.***
 
 ------------
 
-<center><b>Trivia</b></center>
+<div align="center">
+<b>Trivia</b></div>
 -  What is a .mix File?
  - it is a Compressed File like ".zip/.rar" used by RA2/RA2YR to store all of their crucial files in one place. It is the ART of being ORGANIZED!
 
@@ -19,9 +21,8 @@
 
 ------------
 
-<center><b>
-Usage
-</b></center>
+</div>
+<b>Usage</b></div>
 - Add a Target File - Browse a Target file with a respective extension(eg .mix) that will be added on the Target List ->
 
 - Add a Target Folder - Browse a folder and scans for any existing file that has the respective extension(eg .mix) to be added on the Target File List ->
