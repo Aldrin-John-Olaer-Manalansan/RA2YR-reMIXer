@@ -5,13 +5,17 @@ SetBatchLines -1
 SetWorkingDir %A_ScriptDir%
 ListLines Off
 CoordMode,ToolTip,Screen
+
+global version=0.0.1.0
+
 Menu,lvcontextmenu,Add,Remove,removefromlist
 
-Gui Add, ListView, x1 y140 w172 h100 +LV0x4000 +Checked vignoredattrib_lv,Ignore Mix Files with this Attribute
-LV_Add("Check","CheckSummed"),LV_Add("Check","Encrypted"),LV_Add("Check","Local")
-Gui Add, ListView,% "w" A_ScreenWidth-200 " h" A_ScreenHeight-100 " x175 y6 +LV0x4000 +Checked Grid AltSubmit gunprotectfile_lv vunprotectfile_lv",Original Header|Unprotected Header|FilePath
-Gui Add,Button,x25 y250 gshowusagepopup,How to Use the Tool?
-Gui Add, Text,% "x1 y280 w172 h" A_ScreenHeight-380,
+Gui Add, ListView, x1 y140 w172 h130 -LV0x10 NoSortHdr NoSort +Checked vignoredattrib_lv,Ignore MIX Files with this Attribute|%A_Space%
+LV_Add("Check","CheckSummed","(01 Header Attribute)"),LV_Add("Check","Encrypted","(02 Header Attribute)"),LV_Add("Check","Local","(03 Header Attribute)"),LV_Add("Check","10 00 00 d4 94 04 b8 25 9f 98","(theme.mix)"),LV_Add("Check","0a 00 e0 02 cb 02 ba 1e 9d ab","(thememd.mix)")
+LV_ModifyCol()
+
+Gui Add,Button,x25 y280 gshowusagepopup,How to Use the Tool?
+Gui Add,Edit,% "+ReadOnly x1 y310 w172 h" A_ScreenHeight-404,
 (
 RA2YR MIX Unprotected Master is a powerful tool designed to UNPROTECT MIX file headers, these will allow any PROTECTED MIX files to be openable by XCC Mixer Utility.
 
@@ -30,9 +34,11 @@ Gui Add, Edit,Disabled x34 y55 w100 h21 +Center vTargetExtension,mix
 Gui Add, Button, x34 y83 w101 h23 gbrowsemixfile,Add a Target File
 Gui Add, Button, x34 y110 w101 h23 gbrowsemixfolder,Add a Target Folder
 Gui Add, Button, x28 y8 w110 h23 gunprotecttargets,&Unprotect All Targets
+
+Gui Add, ListView,% "w" A_ScreenWidth-200 " h" A_ScreenHeight-100 " x175 y6 +LV0x4000 +Checked Grid AltSubmit gunprotectfile_lv vunprotectfile_lv",Original Header|Unprotected Header|FilePath
 gosub,scanmixfiles
 
-Gui Show,,RA2YR Mix Unprotector MASTER by aldrinjohnom
+Gui Show,,RA2YR Mix Unprotector MASTER v%version% by aldrinjohnom
 Return
 
 showhideextension:
@@ -107,7 +113,6 @@ else
 	}
 }
 Gui +Disabled
-Gui,ListView,unprotectfile_lv
 unprotectedhex:=unprotectfirst10bytes(FilePath)
 if RegExMatch(unprotectedhex,"Encrypted|CheckSummed|OverFlow|Local")
 {
@@ -118,28 +123,41 @@ if RegExMatch(unprotectedhex,"Encrypted|CheckSummed|OverFlow|Local")
 	SetTimer,RemoveErrorToolTip,-2000
 	goto,browsemixfile
 }
-else if RegExMatch(SubStr(FilePath,InStr(FilePath,"\",True,0)+1),"theme.mix|thememd.mix")
-{
-	ToolTip,File got Rejected!`nThis .%TargetExtension% file has a UNIQUE Header that seems to be UNPROTECTED already.,0,0,errortooltip
-	SetTimer,RemoveErrorToolTip,-2000
-	goto,browsemixfile
-} 
 else if (getfirst10bytes(FilePath,True)=unprotectedhex)
 {
 	ToolTip,The Selected File is not PROTECTED!,0,0,errortooltip
 	SetTimer,RemoveErrorToolTip,-2000
 	goto,browsemixfile
 }
-else
+
+originalhex:=getfirst10bytes(FilePath) ; detect the original header
+;this check any ignored header values
+Gui,ListView,ignoredattrib_lv
+loop % LV_GetCount()-3 ; exclude the locals
 {
-	LV_Add(,getfirst10bytes(FilePath),unprotectedhex,FilePath)
-	loop % LV_GetCount("Column")
+	index:=A_Index+3 ; start at row 4 ignoring the "special headers" which is the encrypted,checksummed, and local
+	If (index=LV_GetNext(index-1,"Checked")) ; if checked aka ignored
 	{
-		LV_GetText(tmpr,0,A_Index)
-		if tmpr=FilePath
-			LV_ModifyCol(A_Index,"AutoHDR")
-		else LV_ModifyCol(A_Index,"AutoHDR Center")
+		LV_GetText(tmpr,index,1)
+		if (originalhex=tmpr) ; if this header was ignored ;RegExMatch(SubStr(FilePath,InStr(	FilePath,"\",True,0)+1),"theme.mix|thememd.mix")
+		{
+			LV_GetText(tmpr1,index,2)
+			ToolTip,File got Rejected!`nThis .%TargetExtension% file's Header is at the Ignored List:`n%tmpr% %tmpr1%,0,0,errortooltip
+			SetTimer,RemoveErrorToolTip,-2000
+			goto,browsemixfile
+		}
 	}
+}
+;
+; if this was reached, it means that this file can be UNPROTECTED
+Gui,ListView,unprotectfile_lv
+LV_Add(,originalhex,unprotectedhex,FilePath) ; include it at the list
+loop % LV_GetCount("Column")
+{
+	LV_GetText(tmpr,0,A_Index)
+	if tmpr=FilePath
+		LV_ModifyCol(A_Index,"AutoHDR")
+	else LV_ModifyCol(A_Index,"AutoHDR Center")
 }
 Gui -Disabled
 return
@@ -155,35 +173,39 @@ if ScanPath=
 	return
 _ScanPath:=ScanPath
 Gui +Disabled
-GuiControlGet,TargetExtension,,TargetExtension
+
+;list the ignored headers
+Gui,ListView,ignoredattrib_lv
+Loop % LV_GetCount()-3
+{
+	index:=A_Index+3 ; start at row 4 ignoring the "special headers" which is the encrypted,checksummed, and local
+	If (index=LV_GetNext(index-1,"Checked")) ; if checked aka ignored
+	{
+		LV_GetText(tmpr,index,1)
+		if A_Index=1
+			param1=%tmpr%
+		else param1.=">" tmpr
+	}
+}
+;list all the filespath that are currently listed
 Gui,ListView,unprotectfile_lv
 Loop % LV_GetCount()
 {
 	LV_GetText(tmpr,A_Index,3)
 	if A_Index=1
 		param=%tmpr%
-	else param.="|" tmpr
+	else param.=">" tmpr
 }
+
+GuiControlGet,TargetExtension,,TargetExtension
 TargetExtension:=LTrim(TargetExtension,".") ; remove the dot at the beggining
 Loop,Files,%ScanPath%\*.%TargetExtension%,FR
 {
-	
+	originalhex:=getfirst10bytes(A_LoopFileFullPath)
 	unprotectedhex:=unprotectfirst10bytes(A_LoopFileFullPath)
-	if !RegExMatch(unprotectedhex,"Encrypted|CheckSummed|OverFlow|Local") and !RegExMatch(A_LoopFileName,"theme.mix|thememd.mix") and (getfirst10bytes(A_LoopFileFullPath,True)!=unprotectedhex)
+	if !RegExMatch(unprotectedhex,"Encrypted|CheckSummed|OverFlow|Local") and !RegExMatch(param,"(>|^)" A_LoopFileFullPath "(>|$)") and !RegExMatch(param1,"(>|^)" originalhex "(>|$)") and (getfirst10bytes(A_LoopFileFullPath,True)!=unprotectedhex) ; and !RegExMatch(A_LoopFileName,"theme.mix|thememd.mix")
 	{
-		tmpr:=A_LoopFileFullPath
-		exist:=0
-		loop,parse,param,|
-		{
-			if (A_LoopField=tmpr)
-			{
-				exist:=1
-				break
-			}
-		}
-		if exist
-			continue
-		
+		;if this was reached, that means it can be UNPROTECTED
 		gui,show,,Detecting Protected Files: Found %A_LoopFileName%
 		LV_Add(,getfirst10bytes(A_LoopFileFullPath),unprotectedhex,A_LoopFileFullPath)
 	}
@@ -195,7 +217,7 @@ loop % LV_GetCount("Column")
 		LV_ModifyCol(A_Index,"AutoHDR")
 	else LV_ModifyCol(A_Index,"AutoHDR Center")
 }
-gui,show,,RA2YR Mix Unprotector MASTER by aldrinjohnom
+gui,show,,RA2YR Mix Unprotector MASTER v%version% by aldrinjohnom
 Gui -Disabled
 return
 
