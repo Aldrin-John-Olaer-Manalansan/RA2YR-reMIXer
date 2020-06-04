@@ -416,13 +416,12 @@ loop % rowcount
 				TargetFileContent.Pos := offsetarray[2,1]+4 ;this sets the pointer starting before 5th byte respect to the "offset" of this parameter
 				TargetFileContent.WriteUInt(lmdhexoffset) ; write the hexoffset(4 bytes)
 				TargetFileContent.WriteUInt(lmdsize) ; write the lmd size(4 bytes)
-				
-				gui,show,NoActivate,% "Unprotecting " _filename
-				TargetFileContent.Pos := 0 ;necessary if file is UTF-8/UTF-16 LE ; this sets the pointer starting before first byte
-				loop,parse,unprotectedhex,%A_Space%
-					TargetFileContent.WriteUChar("0x" A_LoopField) ; Patch the first 10 bytes of the mix file, making it UNPROTECTED
 			}
 			
+			gui,show,NoActivate,% "Unprotecting " _filename
+			TargetFileContent.Pos := 0 ;necessary if file is UTF-8/UTF-16 LE ; this sets the pointer starting before first byte
+			loop,parse,unprotectedhex,%A_Space%
+				TargetFileContent.WriteUChar("0x" A_LoopField) ; Patch the first 10 bytes of the mix file, making it UNPROTECTED
 		}
 		TargetFileContent.Close() ; save then close the unprotected mix file
 		LV_Delete(lv_index)
