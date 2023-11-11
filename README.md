@@ -41,8 +41,8 @@ What is LMD Recovery?<br>
 <div align="center">
 <b>Installation</b></div>
 
-1. Download the Latest Released Executable file.
-2. Put the file anywhere you want. I suggest putting it inside a folder so that the generated files during runtime are organized inside the folder.
+1. Download the [Latest Released Executable file](https://github.com/Aldrin-John-Olaer-Manalansan/RA2YR-reMIXer/releases/download/Latest-Executable/reMIXer.exe).
+2. Put this file anywhere you want. I suggest putting it inside a folder so that the generated files during runtime are organized inside the folder.
 3. Run the App anytime you want.
 
 ------------
