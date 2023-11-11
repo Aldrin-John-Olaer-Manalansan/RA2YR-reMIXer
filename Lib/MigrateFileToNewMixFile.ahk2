@@ -1,0 +1,7 @@
+﻿DllCall("MSVCRT.dll\memcpy", "Ptr", reMIX_Area_Body_Ptr + reMIX_Area_Body_Size, "Ptr", File_Ptr, "UInt", File_Size)
+NumPut("UInt", File_ID,
+       "UInt", reMIX_Area_Body_Size, ; Offset from Body
+       "UInt", File_Size,
+       reMIX_Seeker)
+reMIX_Seeker += 12 ; next Index containing Information
+reMIX_Area_Body_Size += File_Size

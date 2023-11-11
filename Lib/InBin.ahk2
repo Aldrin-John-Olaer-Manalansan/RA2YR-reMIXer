@@ -1,0 +1,26 @@
+InBin(pHaystack, HaystackBytes, pNeedle, NeedleBytes, StartingPos:=1, Occurence:=1)
+{
+    Static mCode
+    Local  mSz
+
+    If  not IsSet(mCode)
+	   mSz    :=  A_PtrSize=8 ? 268 : 248
+	,  mcode  :=  Buffer(mSz)
+	,  DllCall("Kernel32\VirtualProtect", "ptr",mcode, "ptr",mSz, "int",0x40, "int*",0)
+	,  DllCall("Crypt32\CryptStringToBinary", "str", A_PtrSize=8
+	? "U1ZXQVSLRCRIRItcJFCJ00Qpy4XAvgEAAABBuv////9BD07yhcB+B2dEjVD/6wgBwkGJ0kUpykGD6QFFhdJyQzHSQTnadzxEidBB"
+	. "ijhAODwBdShEichBigQAZ0ONPAqJ/zgEOXUVQYP5AnMbg8IB6wVEOc909kQ52nRDQQHyRYXSc78xwOs9vwEAAABBg/kBdt8PH0QA"
+	. "AGYPH4QAAAAAAIn4QYoEAGdFjSQ6RYnkQjgEIXW9g8cBRDnPcuTrs0SJ0EgByEFcX15bwwAARYXAdjoxwEGJwUaKFAlBgPpAdhJB"
+	. "icNCgDwZW3MIQbsgAAAA6wNFMdtFD7bSRQHaRYjSRogUCoPAAUQ5wHLIww"    :    "VYnlg+wQU1ZXi1UIi00Qi3UUi0UMKfC"
+	. "JRfQxwIN9GAAPntD32IPg/kCJRfyDfRgAfgmLRRhIiUX46wuLRQwDRRgp8IlF+ItF+InHToX/cjvHRfAAAAAAO330dy+KBDo6AXU"
+	. "hjQQ3igQCOgQxdRaD/gJzHP9F8OsEOfN094tF8DtFHHQnA338hf9zzDHA6x+7AQAAAIP+AXbfjQQfigQCOgQZddRDOfNy8OvNjQQ"
+	. "6X15biexdwwAAAFNWV4tEJBCLVCQUi0wkGIXJdiYx9oocMID7QHYNgDwwW3MHvyAAAADrAjH/D7bbAfuIHDJGOc5y3F9eW8MAAAA"
+	, "int",A_PtrSize=8 ? 358 : 331, "int",0x1, "ptr",mCode, "int*",mSz, "int",0, "int",0)
+
+	FoundPtr := DllCall(mcode, "Ptr",pHaystack,	"Int", HaystackBytes
+						, "Ptr",pNeedle,	"Short", NeedleBytes
+						, "Int",StartingPos,"Int",Occurence, "CDecl Ptr")
+
+	ErrorLevel := ( FoundPtr="" ? "Memory access violation" : FoundPtr=0 ? "Needle not found." : "" )
+	Return FoundPtr
+}

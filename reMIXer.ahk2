@@ -1,0 +1,333 @@
+﻿#SingleInstance Force
+#Warn
+KeyHistory 0
+ListLines False
+CoordMode "ToolTip", "Screen"
+SetWorkingDir A_ScriptDir
+
+#include "Lib\Class_LV_Colors.ahk2"
+
+AppVersion := "2.0.0.0"
+Dir_Work := A_ScriptDir . "\Work\"
+Dir_Done := A_ScriptDir . "\Done\"
+
+if !FileExist(Dir_Work)
+	DirCreate Dir_Work
+
+	; ~~~~~~~~~~~~~~~~~~~~~~~~~~~ Construct the Control Panel GUI
+Gui_ControlPanel := Gui("OwnDialogs", "RA2YR reMIXer v" . AppVersion)
+Gui_ControlPanel_LV_RefreshButton := Gui_ControlPanel.AddButton("Y10 H20", "Refresh ListView")
+Gui_ControlPanel_LV_RefreshButton.OnEvent("Click", Gui_ControlPanel_LV_RefreshButton_OnClick)
+Gui_ControlPanel_reMIXAllTargets := Gui_ControlPanel.AddButton("X+m Y10 H20", "reMIX All Targets")
+Gui_ControlPanel_reMIXAllTargets.OnEvent("Click", Gui_ControlPanel_reMIXAllTargets_DoWork)
+Gui_ControlPanel.AddText("X+m Y12", "Mode:")
+Gui_ControlPanel_DDL := Gui_ControlPanel.AddDDL("Y10 H20 W350 R3 Choose3 X+2", ["1: Only Fix Header","2: Recover LMD Lookup Table -> Fix Header", "3(Recommended): Reconstruct Mix File -> Recover LMD Lookup Table -> Fix Header"])
+Gui_ControlPanel_HowToUse := Gui_ControlPanel.AddButton("X+m Y10 H20", "How to Use RA2YR reMIXer?")
+Gui_ControlPanel_HowToUse.OnEvent("Click", Gui_ControlPanel_HowToUse_OnClick)
+Gui_ControlPanel_LV := Gui_ControlPanel.AddListView("Grid Checked -LV0x10 -WantF2 Xs Y+10 W" . 0.39*A_ScreenWidth . " H" . 0.5*A_ScreenHeight, ["Header Status", "LMD Status", "File Path",""])
+Gui_ControlPanel.Show("Center")
+Gui_ControlPanel_LV_Colors := LV_Colors(Gui_ControlPanel_LV) ; Create a new instance of LV_Colors
+If !IsObject(Gui_ControlPanel_LV_Colors)
+   MsgBox("Couldn't create a new LV_Colors object!", "ERROR", 16)
+Gui_ControlPanel_LV_Colors.ShowColors(True)
+	; ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+	; ~~~~~~~~~~~~~~~~~~~~~~~~~~~ Construct the LMD Selector GUI
+Gui_LMDSelector := Gui("AlwaysOnTop OwnDialogs Owner" . Gui_ControlPanel.Hwnd, "LMD Selector")
+Gui_LMDSelector.AddText("W" . 0.25*A_ScreenWidth,"Multiple LMD files had beed detected inside the target mix file:")
+Gui_LMDSelector_FilePath := Gui_LMDSelector.AddEdit("ReadOnly W" . 0.25*A_ScreenWidth)
+Gui_LMDSelector.AddText("W" . 0.25*A_ScreenWidth,"
+(
+
+Please select only one among the list.
+
+Legend:
+  Offset From Body - distance in address from the body address, where our LMD File can be found.
+  Size - LMD File Size in bytes.
+  Names Count - how many entries are listed in the dictionary of this LMD File. These entries are used for defining all possible file names that this mix file contain.
+  Status:
+    * Default - this LMD file is what our MIX File is currently using.
+    * Unused - this LMD exists inside our MIX File but wasn't used by default.
+
+- Keep in mind that selecting a wrong LMD file will result some files to have incorrect names when viewing the mix. If this happens, redo the reMIXing and select another LMD file from the list, until majority of the file names are now viewable at the XCC Mixer Application.
+- Close this GUI to finalize your selection
+- Closing this GUI without selecting anything from the list will choose the ""Default"" LMD File. Incase there is no ""Default"" LMD File, the LMD File with the highest Offset from the Body will be chosen.
+)")
+Gui_LMDSelector_LV := Gui_LMDSelector.AddListView("Grid -LV0x10 -Multi -WantF2 W" . 0.25*A_ScreenWidth . " H" . 0.25*A_ScreenHeight, ["Offset From Body", "Size", "Names Count", "Status",""])
+Gui_LMDSelector.OnEvent("Close", LMDSelector_Select)
+	; ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Run Dir_Work ; Open Work Directory
+
+return
+
+Gui_ControlPanel_HowToUse_OnClick(GuiObj, Info)
+{
+	MsgBox("1) Add all the MIX files you wish to process inside this folder directory:`n    " . Dir_Work . "`n1.1) You can put the MIX Files inside a subdirectory as long as this subdirectory is inside the work directory. Example:`n    " . Dir_Work . "
+(
+subdirectory\thismixfile.mix
+2) Press "Refresh ListView" button.
+3) Put a Check Mark at the Mix Files you wish to reMIX.
+4) Change the reMIX "Mode" depending on your needs:
+    * 1: File Size will not be reduced. The File Names will not be recovered. Only The Header will be recovered. 
+    * 2: File Size will not be reduced. The Header will be recovered, and will try to recover some File Names inside the Target MIX File. 
+    * 3(Recommended): File Size will be reduced. The Header will be recovered, and will try to recover some File Names inside the Target MIX File. 
+4.1) Keep in mind that there is NO guarantee that ALL file names will be recovered. Some file names could still not show properly.
+5) Press "reMIX all Target Files" button.
+6) Wait for the reMIXing to Finish.
+7) All Successfully reMIXed Files can be found inside this folder directory:
+    
+)" . "    " . Dir_Done
+,"How to Use RA2YR reMIXer?","Owner" . Gui_ControlPanel.Hwnd)
+}
+
+Gui_ControlPanel_LV_RefreshButton_OnClick(GuiObj := "", Info := "")
+{
+	Length := StrLen(Dir_Work)
+	Gui_ControlPanel_LV.Delete()
+	Gui_ControlPanel_LV_Colors.Clear()
+	Gui_ControlPanel_LV_Colors.UpdateProps() ; sync LV info to the CLV
+	Loop Files Dir_Work . "*.mix", "R"
+	{
+		MixFileObj := FileRead(A_LoopFileFullPath, "RAW")
+		MixHeaderStatus := GetMixHeaderStatus(&MixFileObj)
+		LMDStatus := GetLMDStatus(&MixFileObj)
+		Gui_ControlPanel_LV.Add(((MixHeaderStatus == LMDStatus) and (MixHeaderStatus == "Healthy"))?"":"Check", MixHeaderStatus, LMDStatus, SubStr(A_LoopFileFullPath, Length+1))
+		Gui_ControlPanel_LV_Colors.UpdateProps() ; sync LV info to the CLV
+		GetColorFromStatus(MixHeaderStatus,&Color_BG,&Color_TX)
+		Gui_ControlPanel_LV_Colors.Cell(A_Index, 1, Color_BG, Color_TX)
+		GetColorFromStatus(LMDStatus,&Color_BG,&Color_TX)
+		Gui_ControlPanel_LV_Colors.Cell(A_Index, 2, Color_BG, Color_TX)
+	}
+	Loop Gui_ControlPanel_LV.GetCount("Column")
+		Gui_ControlPanel_LV.ModifyCol(A_Index, "AutoHdr Center")
+}
+
+Gui_ControlPanel_reMIXAllTargets_DoWork(GuiObj, Info)
+{
+	Loop Gui_ControlPanel_LV.GetCount()
+	{
+		if (Gui_ControlPanel_LV.GetNext(A_Index-1,"C") == A_Index)
+			reMIX_Level_%Gui_ControlPanel_DDL.Value%(Gui_ControlPanel_LV.GetText(A_Index,3))
+	}
+	if !FileExist(Dir_Done)
+		DirCreate Dir_Done
+	Run Dir_Done ; Open Done Directory
+	Gui_ControlPanel_LV_RefreshButton_OnClick()
+}
+
+LMDSelector_Select(GuiObj)
+{
+	SelectedRow := Gui_LMDSelector_LV.GetNext()
+	if !SelectedRow
+		SelectedRow := LMDSelector_AutoPick()
+	Address := Gui_LMDSelector_LV.GetText(SelectedRow)+0
+	if (Address != "")
+	{
+		Gui_LMDSelector.Hide()
+		LMDSelector_ChosenAddress(Address)
+	}
+}
+
+LMDSelector_ChosenAddress(NewAddress := "")
+{
+	static Address := 0
+	if (NewAddress != "")
+		Address := NewAddress
+	return Address
+}
+
+LMDSelector_AutoPick()
+{
+	SelectedRow := 0
+	Highest_RowIndex := 1
+	Highest_Offset := 0
+	Loop Gui_LMDSelector_LV.GetCount()
+	{
+		if (Gui_LMDSelector_LV.GetText(A_Index,4) == "Default")
+		{
+			SelectedRow := A_Index
+			break
+		}
+		Count := Gui_LMDSelector_LV.GetText(A_Index,1)
+		if (Highest_Offset < Count)
+		{
+			Highest_Offset := Count
+			Highest_RowIndex := A_Index
+		}
+	}
+	if !SelectedRow
+		SelectedRow := Highest_RowIndex
+	return SelectedRow
+}
+
+reMIX_Level_1(FileName)
+{ ; Fix Header
+	MixFileObj := FileRead(Dir_Work . FileName, "RAW")
+	if !IsObject(MixFileObj)
+	{
+		msgbox "Failed to Read Mix File:`n" . FileName
+		return
+	}
+		; ~~~~~~~~~~~~~~~~~~~~~~~~~~~ Fix Header
+	NumPut("UInt", 0x00000000, MixFileObj)
+	NumPut("UInt", MixFileObj.Size - 10 - (12 * NumGet(MixFileObj, 4, "UShort")), MixFileObj, 6)
+		; ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	FromOldFilePath_SaveFuffer_ToNewFilePath(&FileName,&MixFileObj)
+}
+
+reMIX_Level_2(FileName)
+{ ; Recover LMD File at Lookup Table -> Fix Header
+	MixFileObj := FileRead(Dir_Work . FileName, "RAW")
+	if !IsObject(MixFileObj)
+	{
+		msgbox "Failed to Read Mix File:`n" . FileName
+		return
+	}
+
+	#IncludeAgain "Lib\GetMixInformations.ahk2"
+
+	if (LMDFile_OffsetfromBody.Length >= 1) and (LMDInfo_Index.Length + InvalidInfo_Index.Length >= 1)
+	{
+		#IncludeAgain "Lib\LMDSelector_ChooseLMD.ahk2"
+
+		NumPut("UInt", 0x366E051F, ; LMD ID
+		       "UInt", LMDFile_OffsetfromBody,
+		       "UInt", NumGet(Area_Body_Ptr + LMDFile_OffsetfromBody + 32, "UInt"), ; LMD Size
+		       Area_Info_Ptr + ( 12 * ( ( LMDInfo_Index.Length >= 1 ) ? LMDInfo_Index[1] : InvalidInfo_Index[1] ) ) ) ; LMD LookUp Table Ptr
+	}
+
+		; ~~~~~~~~~~~~~~~~~~~~~~~~~~~ Fix Header
+	NumPut("UInt", 0x00000000, MixFileObj)
+	NumPut("UInt", MixFileObj.Size - 10 - (12 * NumGet(MixFileObj, 4, "UShort")), MixFileObj, 6)
+		; ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+	FromOldFilePath_SaveFuffer_ToNewFilePath(&FileName,&MixFileObj)
+}
+
+reMIX_Level_3(FileName)
+{ ; Reconstruct Mix File -> Recover LMD File at Lookup Table -> Fix Header
+	MixFileObj := FileRead(Dir_Work . FileName, "RAW")
+	if !IsObject(MixFileObj)
+	{
+		msgbox "Failed to Read Mix File:`n" . FileName
+		return
+	}
+	reMIX_FileObj := Buffer(MixFileObj.Size)
+	if !IsObject(reMIX_FileObj)
+	{
+		msgbox "Failed to Allocate Secondary Buffer:`n" . FileName
+		return
+	}
+	
+	#IncludeAgain "Lib\GetMixInformations.ahk2"
+
+	reMIX_Area_Info_Offset := 0xA
+	reMIX_Files_Count := Area_Info_ValidFieldsCount + 1 ; +1 for the LMD info region
+	reMIX_Area_Info_Size := reMIX_Files_Count * 12 ; incase we detected a Corrupted LMD Info, then we add additional 12 bytes size to our new MIX File for our LMD Info
+	reMIX_Area_Body_Offset := reMIX_Area_Info_Size + reMIX_Area_Info_Offset
+	reMIX_Area_Body_Size := 0
+	reMIX_Area_Body_Ptr := reMIX_FileObj.Ptr + reMIX_Area_Body_Offset
+
+		; ~~~~~~~~~~~~~~~~~~~~~~~~~~~ reconstruct the Information Field
+	Seeker := MixFileObj.Ptr + Area_Info_Offset
+	reMIX_Seeker := reMIX_FileObj.Ptr + Area_Info_Offset
+	if (!LMDFile_OffsetfromBody.Length) ; No LMD File inside the Mix
+	{
+		DllCall("MSVCRT.dll\memset", "Ptr", reMIX_Area_Body_Ptr + reMIX_Area_Body_Size, "Int", 0xFF, "UInt", 12)
+		reMIX_Seeker += 12
+	}
+	else
+	{
+		#IncludeAgain "Lib\LMDSelector_ChooseLMD.ahk2"
+		File_ID := 0x366E051F ; LMD ID
+		File_Ptr := Area_Body_Ptr + LMDFile_OffsetfromBody
+		File_Size := NumGet(File_Ptr+32, "UInt")
+		#IncludeAgain "Lib\MigrateFileToNewMixFile.ahk2"
+	}
+	Loop Files_Count
+	{
+		File_ID := NumGet(Seeker+0, "UInt")
+		Seeker += 4
+		File_StartingOffsetfromBody := NumGet(Seeker+0, "UInt")
+		Seeker += 4
+		File_Size := NumGet(Seeker+0, "UInt")
+		Seeker += 4
+		if (File_ID != 0x366E051F) ; the LMD was already constructed, so we ignore it
+		{
+			File_EndingOffsetfromBody := File_StartingOffsetfromBody+File_Size
+			if ((File_Size != 0) and (Area_Body_Size >= File_EndingOffsetfromBody)) ; valid info / not corrupted
+			{
+				File_Ptr := Area_Body_Ptr + File_StartingOffsetfromBody
+				#IncludeAgain "Lib\MigrateFileToNewMixFile.ahk2"
+			}
+		}
+	}
+		; ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+		; ~~~~~~~~~~~~~~~~~~~~~~~~~~~ Set the Correct Mix Header
+	NumPut("UInt", 0x00000000,
+		   "UShort", reMIX_Files_Count,
+		   "UInt", reMIX_Area_Body_Size,
+		   reMIX_FileObj)
+		; ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+	reMIX_FileObj.Size := reMIX_Area_Info_Offset + reMIX_Area_Info_Size + reMIX_Area_Body_Size ; trim the buffer onto the exact size for this new mix file
+
+	FromOldFilePath_SaveFuffer_ToNewFilePath(&FileName,&reMIX_FileObj)
+}
+
+FromOldFilePath_SaveFuffer_ToNewFilePath(&FileName,&Mix_Buffer)
+{
+	FilePath := Dir_Done . FileName
+	if !FileExist(Dir_Done)
+		DirCreate Dir_Done
+	else if FileExist(FilePath)
+		FileDelete FilePath
+	FileAppend Mix_Buffer, FilePath, "RAW"
+	
+	FilePath := Dir_Work . FileName
+	if FileExist(FilePath)
+		FileDelete FilePath
+}
+
+GetLMDStatus(&MixFileObj)
+{
+	#IncludeAgain "Lib\GetMixInformations.ahk2"
+	if (!LMDFile_OffsetfromBody.Length) ; no LMD file detected
+		return "Unrecoverable"
+	else if (LMDInfo_Index.Length) ; LMD is considered Healthy if we found its info
+		return "Healthy"
+	else if (!InvalidInfo_Index.Length)
+		return "Reconstructable"
+	else return "Recoverable"
+}
+
+GetMixHeaderStatus(&MixFileObj)
+{
+	EncryptionKey := NumGet(MixFileObj, "UShort")
+	if (EncryptionKey)
+		return Format("Unknown 0x{:X}", EncryptionKey)
+	return (NumGet(MixFileObj, 6, "UInt") == (MixFileObj.Size - 10 - (12 * NumGet(MixFileObj, 4, "UShort")))) ? "Healthy" : "Recoverable"
+}
+
+GetColorFromStatus(Status,&Color_BG,&Color_TX)
+{
+	Switch(Status)
+	{
+		case "Healthy":
+			Color_BG := 0x00FF7F
+			Color_TX := 0x000000
+		case "Recoverable":
+			Color_BG := 0xFFD700
+			Color_TX := 0x000000
+		case "Reconstructable":
+			Color_BG := 0xFF8B00
+			Color_TX := 0x000000
+		default:
+			Color_BG := 0xFF0000
+			Color_TX := 0xFFFFFF
+	}
+}
+
+#include "Lib\InBin.ahk2"

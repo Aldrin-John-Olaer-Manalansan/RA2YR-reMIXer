@@ -1,0 +1,80 @@
+﻿Files_Count := NumGet(MixFileObj, 0x4,"UShort")
+
+Area_Info_Offset := 0xA
+Area_Info_Ptr := MixFileObj.Ptr + Area_Info_Offset
+Area_Info_Size := (Files_Count * 12)
+Area_Body_Offset := Area_Info_Size + Area_Info_Offset
+Area_Body_Size := MixFileObj.Size - Area_Body_Offset
+Area_Body_Ptr := MixFileObj.Ptr+Area_Body_Offset
+
+	; ~~~~~~~~~~~~~~~~~~~~~~~~~~~ Get all Possible LDM_Addresss of the LMD File within the file
+LMDFile_OffsetfromBody := []
+Seeker := MixFileObj.Ptr+Area_Body_Offset
+Seeker_RemainingBytes := Area_Body_Size
+LMD_Header_Pattern := Buffer(32)
+NumPut("UInt", 0x20434358,
+       "UInt", 0x4F207962,
+       "UInt", 0x2066616C,
+       "UInt", 0x206E6176,
+       "UInt", 0x20726564,
+       "UInt", 0x6B657053,
+       "UInt", 0x2717041A,
+       "UInt", 0x00801910,
+       LMD_Header_Pattern)
+Loop
+{
+	if (FoundPtr := InBin(Seeker, Seeker_RemainingBytes, LMD_Header_Pattern.Ptr, 32))
+	{
+		LMDFile_Size := NumGet(FoundPtr+32, "UInt")
+		if (LMDFile_Size > 0) and (LMDFile_Size <= Area_Body_Size)
+			LMDFile_OffsetfromBody.Push(FoundPtr-Area_Body_Ptr)
+		FoundPtr++
+		Seeker_RemainingBytes -= FoundPtr-Seeker
+		Seeker := FoundPtr
+	}
+	else break
+}
+	; ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+	; ~~~~~~~~~~~~~~~~~~~~~~~~~~~ Scan Info Area for possible field containing the LMD Information registration
+LMDInfo_Index := []
+InvalidInfo_Index := []
+Area_Info_ValidFieldsCount := 0
+Seeker := MixFileObj.Ptr + Area_Info_Offset
+Loop Files_Count
+{
+	File_ID := NumGet(Seeker+0, "UInt")
+	Seeker += 0x4
+	File_StartingOffsetfromBody := NumGet(Seeker+0, "UInt")
+	Seeker += 0x4
+	File_Size := NumGet(Seeker+0, "UInt")
+	Seeker += 0x4
+	File_EndingOffsetfromBody := File_StartingOffsetfromBody+File_Size
+	if ((File_Size == 0) or (Area_Body_Size < File_EndingOffsetfromBody)) ; corrupted/invalid info
+		InvalidInfo_Index.Push(A_Index-1)
+	else if (File_ID == 0x366E051F) ; was an LMD Info
+	{
+		if InBin(Area_Body_Ptr + File_StartingOffsetfromBody, 32, LMD_Header_Pattern.Ptr, 32) ; check if this info field is pointing onto a valid LMD File
+			LMDInfo_Index.Push(A_Index-1)
+	}
+	else
+	{
+		Area_Info_ValidFieldsCount++
+		MaxIndex := LMDFile_OffsetfromBody.Length
+		Loop MaxIndex
+		{
+			Index := MaxIndex - A_Index + 1
+			if ((LMDFile_OffsetfromBody[Index] >= File_StartingOffsetfromBody)
+			 && (LMDFile_OffsetfromBody[Index] < File_EndingOffsetfromBody)) ; the current file info must be a MIX file and this LMD File was inside it
+			{
+				; msgbox "ID: " . Format("{:X}",File_ID)
+				; . "`nSize: " . File_Size
+				; . "`n" . Format("{:X}",File_StartingOffsetfromBody) . " <= " . Format("{:X}",LMDFile_OffsetfromBody[Index]) . " < " . Format("{:X}",File_EndingOffsetfromBody)
+				LMDFile_OffsetfromBody.RemoveAt(Index) ; so we remove it to the list of possible LMD file for our main MIX file
+			}
+		}
+	}
+}
+	;~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+isLMDCorrupted := !LMDInfo_Index.Length
