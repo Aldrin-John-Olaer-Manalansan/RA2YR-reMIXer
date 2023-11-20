@@ -7,7 +7,7 @@ SetWorkingDir A_ScriptDir
 
 #include "Lib\Class_LV_Colors.ahk2"
 
-AppVersion := "2.0.0.0"
+AppVersion := "2.0.1.0"
 Dir_Work := A_ScriptDir . "\Work\"
 Dir_Done := A_ScriptDir . "\Done\"
 
@@ -77,8 +77,16 @@ subdirectory\thismixfile.mix
 6) Wait for the reMIXing to Finish.
 7) All Successfully reMIXed Files can be found inside this folder directory:
     
-)" . "    " . Dir_Done
-,"How to Use RA2YR reMIXer?","Owner" . Gui_ControlPanel.Hwnd)
+)" . "    " . Dir_Done . "
+(
+
+
+For more Information about this Tool, Visit:
+https://github.com/Aldrin-John-Olaer-Manalansan/RA2YR-reMIXer
+
+If you have problems/errors/concerns/suggestions when using this tool, create an issue at:
+https://github.com/Aldrin-John-Olaer-Manalansan/RA2YR-reMIXer/issues
+)", "How to Use RA2YR reMIXer?", "Owner" . Gui_ControlPanel.Hwnd)
 }
 
 Gui_ControlPanel_LV_RefreshButton_OnClick(GuiObj := "", Info := "")
@@ -227,6 +235,7 @@ reMIX_Level_3(FileName)
 	reMIX_Area_Info_Size := reMIX_Files_Count * 12 ; incase we detected a Corrupted LMD Info, then we add additional 12 bytes size to our new MIX File for our LMD Info
 	reMIX_Area_Body_Offset := reMIX_Area_Info_Size + reMIX_Area_Info_Offset
 	reMIX_Area_Body_Size := 0
+	reMIX_Area_Body_MaxAllowedSize := reMIX_FileObj.Size - reMIX_Area_Body_Offset
 	reMIX_Area_Body_Ptr := reMIX_FileObj.Ptr + reMIX_Area_Body_Offset
 
 		; ~~~~~~~~~~~~~~~~~~~~~~~~~~~ reconstruct the Information Field
