@@ -1,0 +1,21 @@
+﻿StringToCRC32(str)
+{
+    try
+    {
+		buf := Buffer(Strlen(str), 0)
+		StrPut(str, buf, buf.size, "UTF-8")
+		vHash := 0xFFFFFFFF & DllCall("ntdll.dll\RtlComputeCrc32", "UInt", 0, "Ptr", buf, "UInt", buf.size)
+	}
+	catch
+	{
+		vHash := 0xFFFFFFFF
+		Loop Parse, str
+		{
+			vHash := vHash ^ Ord(A_LoopField)
+			Loop 8
+				vHash := (vHash & 1) ? (vHash >> 1) ^ 0xEDB88320 : (vHash >> 1)
+		}
+		vHash := 0xFFFFFFFF & ~vHash
+	}
+	return vHash
+}

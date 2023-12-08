@@ -1,4 +1,5 @@
-﻿try {
+﻿isMigrateFileSuccessful := true
+try {
 	DllCall("MSVCRT.dll\memcpy", "Ptr", reMIX_Area_Body_Ptr + reMIX_Area_Body_Size, "Ptr", File_Ptr, "UInt", File_Size, "CDecl Ptr")
 } catch as e {
 	if DllCall("MSVCRT.dll\memcpy_s",
@@ -7,8 +8,12 @@
 				"Ptr" , File_Ptr,
 				"UPtr", File_Size,
 				"CDecl Int") ; has error
-		msgbox "Invalid memcpy_s parameters:`n`nDestination: " . Format("0x{:X}", reMIX_Area_Body_Ptr + reMIX_Area_Body_Size) . "`nDestinationSize: " . reMIX_Area_Body_MaxAllowedSize - reMIX_Area_Body_Size . "`nSource: " . Format("0x{:X}", File_Ptr) . "`nSourceSize: " . File_Size . "`nMaxAllowedSize: " . reMIX_Area_Body_MaxAllowedSize . "`n`nPlease Copy this Error message(Press CTRL+C) then create an issue with this information inside at:`nhttps://github.com/Aldrin-John-Olaer-Manalansan/RA2YR-reMIXer/issues"
+	{
+		msgbox "Invalid memcpy_s parameters:`n`nFile_Path: " . FileName . "`nFile_ID: " . File_ID . "`nDestination: " . Format("0x{:X}", reMIX_Area_Body_Ptr + reMIX_Area_Body_Size) . "`nDestinationSize: " . reMIX_Area_Body_MaxAllowedSize - reMIX_Area_Body_Size . "`nSource: " . Format("0x{:X}", File_Ptr) . "`nSourceSize: " . File_Size . "`nMaxAllowedSize: " . reMIX_Area_Body_MaxAllowedSize . "`n`nPlease Copy this Error message(Press CTRL+C) then create an issue with this information inside at:`nhttps://github.com/Aldrin-John-Olaer-Manalansan/RA2YR-reMIXer/issues"
+		isMigrateFileSuccessful := false
+	}
 }
+FileAppend (isMigrateFileSuccessful?"Sucess":"Failed") . " Add_File: ID=" . Format("{:08X}", File_ID) . " OffsetFromBody: " . Format("0x{:X}", File_StartingOffsetfromBody) . " Size=" . File_Size . " To_reMIX: RemainingBodySize=" . reMIX_Area_Body_MaxAllowedSize - reMIX_Area_Body_Size . "`r`n", File_OperationLog
 NumPut( "UInt", File_ID,
 		"UInt", reMIX_Area_Body_Size, ; Offset from Body
 		"UInt", File_Size,

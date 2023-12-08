@@ -1,0 +1,1 @@
+gcc -shared -fPIC -O2 -g0 reMIXer.h -o reMIXer.dll

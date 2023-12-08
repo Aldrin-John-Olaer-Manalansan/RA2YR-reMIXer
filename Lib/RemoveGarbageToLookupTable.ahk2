@@ -1,0 +1,14 @@
+Key1 := SubStr(Key1,1,InStr(Key1,"(")-1)+0 ; parse string then convert string to integer by adding zero
+if LookUpTable.Has(Key1)
+	LookUpTable.Delete(Key1)
+if OverlapMap.Has(Key1)
+	OverlapMap.Delete(Key1)
+For Key2 in OverlapMap
+{
+	if OverlapMap[Key2].Has(Key1)
+	{
+		if (OverlapMap[Key2].Count >= 2)
+			OverlapMap[Key2].Delete(Key1)
+		else OverlapMap.Delete(Key2)
+	}
+}

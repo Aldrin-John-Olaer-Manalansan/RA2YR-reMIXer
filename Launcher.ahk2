@@ -1,0 +1,2 @@
+﻿run A_ScriptDir . "\x" . (A_Is64bitOS?"64":"86") . "\reMIXer.exe"
+exitapp

@@ -1,5 +1,5 @@
 # RA2YR reMIXer
-## v2.0.1.0
+## v3.0.0.0
 ------------
 
 <div align="center">
@@ -41,29 +41,6 @@ What is LMD Recovery?<br>
 <div align="center">
 <b>Installation</b></div>
 
-1. Download the [Latest Released Executable file](https://github.com/Aldrin-John-Olaer-Manalansan/RA2YR-reMIXer/releases/download/Latest-Executable/reMIXer.exe).
-2. Put this file anywhere you want. I suggest putting it inside a folder so that the generated files during runtime are organized inside the folder.
-3. Run the App anytime you want.
-
-------------
-
-<div align="center">
-<b>Usage</b></div>
-
-1) Add all the MIX files you wish to process inside the work directory:
-> (reMIXer Root Folder)\Work\
-
-1.1) You can put the MIX Files inside a subdirectory as long as this subdirectory is inside the work directory. Example:
-> (reMIXer Root Folder)\Work\subdirectory\thismixfile.mix
-
-2) Press "Refresh ListView" button.
-3) Put a Check Mark at the Mix Files you wish to reMIX.
-4) Change the reMIX "Mode" depending on your needs:
-    * 1: File Size will not be reduced. The File Names will not be recovered. Only The Header will be recovered. 
-    * 2: File Size will not be reduced. The Header will be recovered, and will try to recover some File Names inside the Target MIX File. 
-    * 3(Recommended): File Size will be reduced. The Header will be recovered, and will try to recover some File Names inside the Target MIX File. 
-4.1) Keep in mind that there is NO guarantee that ALL file names will be recovered. Some file names could still not show properly.
-5) Press "reMIX all Target Files" button.
-6) Wait for the reMIXing to Finish.
-7) All Successfully reMIXed Files can be found inside this folder directory:
-> (reMIXer Root Folder)\Done\
+1. Download the [Latest Released Build](https://github.com/Aldrin-John-Olaer-Manalansan/RA2YR-reMIXer/releases/download/Latest-Build/RA2YR_reMIXer.zip).
+2. Extract the content of this *ZIP* File anywhere you want.
+3. Run **Launcher.exe** to start reMIXing.

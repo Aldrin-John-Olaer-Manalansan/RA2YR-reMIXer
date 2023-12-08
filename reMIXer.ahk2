@@ -2,40 +2,58 @@
 #Warn
 KeyHistory 0
 ListLines False
-CoordMode "ToolTip", "Screen"
 SetWorkingDir A_ScriptDir
+
+; #include "Lib\MCodes.ahk2"
+#DllLoad "%A_ScriptDir%\reMIXer.dll"
+DLLHandle := DllCall("GetModuleHandle", "Str", "reMIXer", "Ptr")
+if !DLLHandle
+{
+    MsgBox "Failed to load reMIXer.dll!"
+    ExitApp
+}
+FileConflictChecker := DllCall("GetProcAddress", "Ptr", DLLHandle, "AStr", "FileConflictChecker", "Ptr")
+ReconstructMIX := DllCall("GetProcAddress", "Ptr", DLLHandle, "AStr", "ReconstructMIX", "Ptr")
 
 #include "Lib\Class_LV_Colors.ahk2"
 
-AppVersion := "2.0.1.0"
-Dir_Work := A_ScriptDir . "\Work\"
+AppVersion := "3.0.0.0"
 Dir_Done := A_ScriptDir . "\Done\"
-
-if !FileExist(Dir_Work)
-	DirCreate Dir_Work
+File_OperationLog := Dir_Done . "operation.log"
 
 	; ~~~~~~~~~~~~~~~~~~~~~~~~~~~ Construct the Control Panel GUI
-Gui_ControlPanel := Gui("OwnDialogs", "RA2YR reMIXer v" . AppVersion)
-Gui_ControlPanel_LV_RefreshButton := Gui_ControlPanel.AddButton("Y10 H20", "Refresh ListView")
-Gui_ControlPanel_LV_RefreshButton.OnEvent("Click", Gui_ControlPanel_LV_RefreshButton_OnClick)
-Gui_ControlPanel_reMIXAllTargets := Gui_ControlPanel.AddButton("X+m Y10 H20", "reMIX All Targets")
-Gui_ControlPanel_reMIXAllTargets.OnEvent("Click", Gui_ControlPanel_reMIXAllTargets_DoWork)
-Gui_ControlPanel.AddText("X+m Y12", "Mode:")
-Gui_ControlPanel_DDL := Gui_ControlPanel.AddDDL("Y10 H20 W350 R3 Choose3 X+2", ["1: Only Fix Header","2: Recover LMD Lookup Table -> Fix Header", "3(Recommended): Reconstruct Mix File -> Recover LMD Lookup Table -> Fix Header"])
-Gui_ControlPanel_HowToUse := Gui_ControlPanel.AddButton("X+m Y10 H20", "How to Use RA2YR reMIXer?")
-Gui_ControlPanel_HowToUse.OnEvent("Click", Gui_ControlPanel_HowToUse_OnClick)
-Gui_ControlPanel_LV := Gui_ControlPanel.AddListView("Grid Checked -LV0x10 -WantF2 Xs Y+10 W" . 0.39*A_ScreenWidth . " H" . 0.5*A_ScreenHeight, ["Header Status", "LMD Status", "File Path",""])
-Gui_ControlPanel.Show("Center")
-Gui_ControlPanel_LV_Colors := LV_Colors(Gui_ControlPanel_LV) ; Create a new instance of LV_Colors
+Gui_ControlPanel := Gui("OwnDialogs ", "RA2YR reMIXer v" . AppVersion . (A_IsAdmin?" (Administrator)":""))
+Gui_ControlPanel.BackColor := "72787E"
+Gui_ControlPanel.SetFont("cWhite", "Verdana")
+Gui_ControlPanel.AddButton("vAddButton Y10 H20", "Add Target Archives to List")
+Gui_ControlPanel["AddButton"].OnEvent("Click", AddMIXtoList)
+Gui_ControlPanel.AddButton("vreMIXAllTargets X+m H20", "reMIX All Targets")
+Gui_ControlPanel["reMIXAllTargets"].OnEvent("Click", reMIXAllMIXTargets)
+Gui_ControlPanel.AddButton("vHowToUse X+m H20", "How to Use RA2YR reMIXer?")
+Gui_ControlPanel["HowToUse"].OnEvent("Click", Gui_ControlPanel_HowToUseMsg)
+Gui_ControlPanel.AddText("XM Y+10", "Mode:")
+Gui_ControlPanel.AddDDL("vModeSelector R3 Choose3 X+2 H20 W" . PercentageToScreenWidth(39.2), ["1: Only Fix Header","2(Recommended): Recover LMD Lookup Table -> Fix Header", "3(Advanced): Reconstruct MIX Archive -> Recover LMD Lookup Table -> Fix Header"])
+Gui_ControlPanel.AddListView("vLV Grid Background303841 Checked -LV0x10 -WantF2 Xs Y+10 W" . PercentageToScreenWidth(41) . " H" . PercentageToScreenHeight(45), ["Header Status", "LMD Status", "File Path",""])
+Gui_ControlPanel_LV_Menu := Menu()
+Gui_ControlPanel_LV_Menu.Add("Delete All Selected Rows", Gui_ControlPanel_LV_DeleteRows)
+Gui_ControlPanel_LV_Colors := LV_Colors(Gui_ControlPanel["LV"]) ; Create a new instance of LV_Colors
 If !IsObject(Gui_ControlPanel_LV_Colors)
    MsgBox("Couldn't create a new LV_Colors object!", "ERROR", 16)
 Gui_ControlPanel_LV_Colors.ShowColors(True)
+Gui_ControlPanel["LV"].OnEvent("ContextMenu", Gui_ControlPanel_LV_Menu_Show)
+Gui_ControlPanel["LV"].OnEvent("ColClick", Gui_ControlPanel_LV_UpdateColors)
+Gui_ControlPanel_Progress := Gui_ControlPanel.AddProgress("-Smooth Range Xs Y+10 W" . PercentageToScreenWidth(41) . " H" . PercentageToScreenHeight(2), 100)
+Gui_ControlPanel_Progress.Visible := False
+Gui_ControlPanel_Progress.Value := 0
+Gui_ControlPanel.Show("Center")
 	; ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 	; ~~~~~~~~~~~~~~~~~~~~~~~~~~~ Construct the LMD Selector GUI
 Gui_LMDSelector := Gui("AlwaysOnTop OwnDialogs Owner" . Gui_ControlPanel.Hwnd, "LMD Selector")
-Gui_LMDSelector.AddText("W" . 0.25*A_ScreenWidth,"Multiple LMD files had beed detected inside the target mix file:")
-Gui_LMDSelector_FilePath := Gui_LMDSelector.AddEdit("ReadOnly W" . 0.25*A_ScreenWidth)
+Gui_LMDSelector.BackColor := "72787E"
+Gui_LMDSelector.SetFont("cWhite", "Verdana")
+Gui_LMDSelector.AddText("W" . 0.25*A_ScreenWidth,"Multiple LMD files have been detected inside the target MIX Archive:")
+Gui_LMDSelector_FilePath := Gui_LMDSelector.AddEdit("ReadOnly Background303841 W" . 0.25*A_ScreenWidth)
 Gui_LMDSelector.AddText("W" . 0.25*A_ScreenWidth,"
 (
 
@@ -44,41 +62,72 @@ Please select only one among the list.
 Legend:
   Offset From Body - distance in address from the body address, where our LMD File can be found.
   Size - LMD File Size in bytes.
-  Names Count - how many entries are listed in the dictionary of this LMD File. These entries are used for defining all possible file names that this mix file contain.
+  Names Count - how many entries are listed in the dictionary of this LMD File. These entries are used for defining all possible file names that this MIX Archive contain.
   Status:
-    * Default - this LMD file is what our MIX File is currently using.
-    * Unused - this LMD exists inside our MIX File but wasn't used by default.
+    * Default - this LMD file is what our MIX Archive is currently using.
+    * Unused - this LMD exists inside our MIX Archive but wasn't used by default.
 
 - Keep in mind that selecting a wrong LMD file will result some files to have incorrect names when viewing the mix. If this happens, redo the reMIXing and select another LMD file from the list, until majority of the file names are now viewable at the XCC Mixer Application.
 - Close this GUI to finalize your selection
-- Closing this GUI without selecting anything from the list will choose the ""Default"" LMD File. Incase there is no ""Default"" LMD File, the LMD File with the highest Offset from the Body will be chosen.
+- Closing this GUI without selecting anything from the list will choose the "Default" LMD File. Incase there is no "Default" LMD File, the LMD File with the highest Offset from the Body will be chosen.
 )")
-Gui_LMDSelector_LV := Gui_LMDSelector.AddListView("Grid -LV0x10 -Multi -WantF2 W" . 0.25*A_ScreenWidth . " H" . 0.25*A_ScreenHeight, ["Offset From Body", "Size", "Names Count", "Status",""])
+Gui_LMDSelector_LV := Gui_LMDSelector.AddListView("Grid Background303841 -LV0x10 -Multi -WantF2 W" . 0.25*A_ScreenWidth . " H" . 0.25*A_ScreenHeight, ["Relative Offset From Body", "Size", "Names Count", "Status",""])
 Gui_LMDSelector.OnEvent("Close", LMDSelector_Select)
 	; ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Run Dir_Work ; Open Work Directory
+	; ~~~~~~~~~~~~~~~~~~~~~~~~~~~ Construct the Conflict Solver GUI
+Gui_ConflictSolver := Gui("AlwaysOnTop OwnDialogs Owner" . Gui_ControlPanel.Hwnd, "Conflict Solver")
+Gui_ConflictSolver.BackColor := "72787E"
+Gui_ConflictSolver.SetFont("cWhite", "Verdana")
+Gui_ConflictSolver_Comment := Gui_ConflictSolver.AddEdit("ReadOnly Background303841 W" . PercentageToScreenWidth(50.5) . " H" . PercentageToScreenHeight(20))
+Gui_ConflictSolver.AddButton("vCancelMIXReconstruction XM H20 ", "Cancel MIX Reconstruction")
+Gui_ConflictSolver["CancelMIXReconstruction"].OnEvent("Click", Gui_ConflictSolver_CancelMIXReconstruction_OnClick)
+Gui_ConflictSolver.AddText("vBytesConflict Center Background303841 X+m W" . PercentageToScreenWidth(32.5),"37213217 Bytes Saved")
+Gui_ConflictSolver_DuplicateLV := Gui_ConflictSolver.AddListView("Grid Background303841 -LV0x10 -Multi -WantF2 XM W" . PercentageToScreenWidth(25) . " H" . PercentageToScreenHeight(30), ["Chosen Index(ID)", "Duplicate Group of Indexes(ID)", "Relative Offset From Body", "Size",""])
+Gui_ConflictSolver_DuplicateLV_Colors := LV_Colors(Gui_ConflictSolver_DuplicateLV) ; Create a new instance of LV_Colors
+If !IsObject(Gui_ConflictSolver_DuplicateLV_Colors)
+   MsgBox("Couldn't create a new LV_Colors object!", "ERROR", 16)
+Gui_ConflictSolver_DuplicateLV_Colors.ShowColors(True)
+Gui_ConflictSolver_DuplicateLV_Menu := Menu()
+Gui_ConflictSolver_DuplicateLV.OnEvent("DoubleClick", Gui_ConflictSolver_DuplicateLV_Menu_Show)
+Gui_ConflictSolver_DuplicateLV.OnEvent("ColClick", Gui_ConflictSolver_DuplicateLV_UpdateColors)
 
+Gui_ConflictSolver_ContainerLV := Gui_ConflictSolver.AddListView("Grid Background303841 Checked -LV0x10 -Multi -WantF2 X+m YP W" . PercentageToScreenWidth(25) . " H" . PercentageToScreenHeight(30), ["Container Index(ID)", "Contained Group of Indexes(ID)", "Relative Offset From Body", "Size",""])
+Gui_ConflictSolver_ContainerLV_Colors := LV_Colors(Gui_ConflictSolver_ContainerLV) ; Create a new instance of LV_Colors
+If !IsObject(Gui_ConflictSolver_ContainerLV_Colors)
+   MsgBox("Couldn't create a new LV_Colors object!", "ERROR", 16)
+Gui_ConflictSolver_ContainerLV_Colors.ShowColors(True)
+Gui_ConflictSolver_ContainerLV.OnEvent("ItemCheck", Gui_ConflictSolver_ContainerLV_ItemCheck)
+Gui_ConflictSolver_ContainerLV.OnEvent("ColClick", Gui_ConflictSolver_ContainerLV_UpdateColors)
+
+Gui_ConflictSolver_DuplicateLV.GetPos(&ctrlposX, &ctrlposY)
+Gui_ConflictSolver_OverlapLV := Gui_ConflictSolver.AddListView("Grid Background303841 Checked -LV0x10 -Multi -WantF2 X" . ctrlposX . " Y" . ctrlposY . " W" . PercentageToScreenWidth(50.5) . " H" . PercentageToScreenHeight(30), ["Index", "Overlapped Group of Indexes", "Relative Offset From Body", "Size",""])
+Gui_ConflictSolver_OverlapLV_Colors := LV_Colors(Gui_ConflictSolver_OverlapLV) ; Create a new instance of LV_Colors
+If !IsObject(Gui_ConflictSolver_OverlapLV_Colors)
+   MsgBox("Couldn't create a new LV_Colors object!", "ERROR", 16)
+Gui_ConflictSolver_OverlapLV_Colors.ShowColors(True)
+Gui_ConflictSolver_OverlapLV.OnEvent("ItemCheck", Gui_ConflictSolver_OverlapLV_ItemCheck)
+Gui_ConflictSolver_OverlapLV.OnEvent("ColClick", Gui_ConflictSolver_OverlapLV_UpdateColors)
+Gui_ConflictSolver.OnEvent("Close", ConflicSolver_Submit)
+ConflictSolver_ChangeMode(0)
+	; ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 return
 
-Gui_ControlPanel_HowToUse_OnClick(GuiObj, Info)
+Gui_ControlPanel_HowToUseMsg(GuiObj, Info)
 {
-	MsgBox("1) Add all the MIX files you wish to process inside this folder directory:`n    " . Dir_Work . "`n1.1) You can put the MIX Files inside a subdirectory as long as this subdirectory is inside the work directory. Example:`n    " . Dir_Work . "
+	MsgBox("
 (
-subdirectory\thismixfile.mix
-2) Press "Refresh ListView" button.
-3) Put a Check Mark at the Mix Files you wish to reMIX.
-4) Change the reMIX "Mode" depending on your needs:
+1) Click Add Target Archives to List then select the MIX Archives you wish to analyze.
+1.1) You can optionally delete a multiple rows on the MIX ListView by Right-Clicking them, then press Delete.
+2) Put a Check Mark at the MIX Archives you wish to reMIX.
+3) Change the reMIX "Mode" depending on your needs:
     * 1: File Size will not be reduced. The File Names will not be recovered. Only The Header will be recovered. 
-    * 2: File Size will not be reduced. The Header will be recovered, and will try to recover some File Names inside the Target MIX File. 
-    * 3(Recommended): File Size will be reduced. The Header will be recovered, and will try to recover some File Names inside the Target MIX File. 
+    * 2(Recommended): File Size will not be reduced. The Header will be recovered, and will try to recover some File Names inside the Target MIX Archive.
+    * 3(Advanced): File Size will be reduced. The Header will be recovered, and will try to recover some File Names inside the Target MIX Archive.
+4) Press "reMIX all Targets" button.
 4.1) Keep in mind that there is NO guarantee that ALL file names will be recovered. Some file names could still not show properly.
-5) Press "reMIX all Target Files" button.
-6) Wait for the reMIXing to Finish.
-7) All Successfully reMIXed Files can be found inside this folder directory:
-    
-)" . "    " . Dir_Done . "
-(
+5) Wait for the reMIXing to Finish.
+6) Each Successfully reMIXed File can be found at the same directory as its original file. The name will start with word reMIXed_<originalfilename>
 
 
 For more Information about this Tool, Visit:
@@ -89,39 +138,335 @@ https://github.com/Aldrin-John-Olaer-Manalansan/RA2YR-reMIXer/issues
 )", "How to Use RA2YR reMIXer?", "Owner" . Gui_ControlPanel.Hwnd)
 }
 
-Gui_ControlPanel_LV_RefreshButton_OnClick(GuiObj := "", Info := "")
+ComputeOutputFileSize(LookUpTable)
 {
-	Length := StrLen(Dir_Work)
-	Gui_ControlPanel_LV.Delete()
-	Gui_ControlPanel_LV_Colors.Clear()
-	Gui_ControlPanel_LV_Colors.UpdateProps() ; sync LV info to the CLV
-	Loop Files Dir_Work . "*.mix", "R"
-	{
-		MixFileObj := FileRead(A_LoopFileFullPath, "RAW")
-		MixHeaderStatus := GetMixHeaderStatus(&MixFileObj)
-		LMDStatus := GetLMDStatus(&MixFileObj)
-		Gui_ControlPanel_LV.Add(((MixHeaderStatus == LMDStatus) and (MixHeaderStatus == "Healthy"))?"":"Check", MixHeaderStatus, LMDStatus, SubStr(A_LoopFileFullPath, Length+1))
-		Gui_ControlPanel_LV_Colors.UpdateProps() ; sync LV info to the CLV
-		GetColorFromStatus(MixHeaderStatus,&Color_BG,&Color_TX)
-		Gui_ControlPanel_LV_Colors.Cell(A_Index, 1, Color_BG, Color_TX)
-		GetColorFromStatus(LMDStatus,&Color_BG,&Color_TX)
-		Gui_ControlPanel_LV_Colors.Cell(A_Index, 2, Color_BG, Color_TX)
-	}
-	Loop Gui_ControlPanel_LV.GetCount("Column")
-		Gui_ControlPanel_LV.ModifyCol(A_Index, "AutoHdr Center")
+	OutputFileSize := (LookUpTable.Count * 12) + 10
+	For Key in LookUpTable
+		OutputFileSize += LookUpTable[Key].Size
+	return OutputFileSize
 }
 
-Gui_ControlPanel_reMIXAllTargets_DoWork(GuiObj, Info)
+ChangeBytesConflictText(OutputSize, MaxSize)
 {
-	Loop Gui_ControlPanel_LV.GetCount()
+	RemainingSize := MaxSize - OutputSize
+	Gui_ConflictSolver["BytesConflict"].Value := "MIX Size Before/After Reconstruction: " . OutputSize . " / " . MaxSize . " ("
+	if (RemainingSize < 0)
 	{
-		if (Gui_ControlPanel_LV.GetNext(A_Index-1,"C") == A_Index)
-			reMIX_Level_%Gui_ControlPanel_DDL.Value%(Gui_ControlPanel_LV.GetText(A_Index,3))
+		Gui_ConflictSolver["BytesConflict"].SetFont("cRed bold")
+		Gui_ConflictSolver["BytesConflict"].Value .= -RemainingSize . " Bytes Overflowed"
 	}
-	if !FileExist(Dir_Done)
-		DirCreate Dir_Done
-	Run Dir_Done ; Open Done Directory
-	Gui_ControlPanel_LV_RefreshButton_OnClick()
+	else
+	{
+		Gui_ConflictSolver["BytesConflict"].SetFont("c00FF7F bold")
+		if (RemainingSize > 0)
+			Gui_ConflictSolver["BytesConflict"].Value .= RemainingSize . " Bytes Reduced"
+		else Gui_ConflictSolver["BytesConflict"].Value := "File Size Unchanged"
+	}
+	Gui_ConflictSolver["BytesConflict"].Value .= ")"
+}
+
+ConflictSolver_ChangeMode(Mode)
+{
+	if Mode
+	{
+		Gui_ConflictSolver_DuplicateLV.Enabled := False
+		Gui_ConflictSolver_DuplicateLV.Visible := False
+		Gui_ConflictSolver_ContainerLV.Enabled := False
+		Gui_ConflictSolver_ContainerLV.Visible := False
+		Gui_ConflictSolver_OverlapLV.Enabled := True
+		Gui_ConflictSolver_OverlapLV.Visible := True
+		Gui_ConflictSolver["BytesConflict"].Visible := True
+	}
+	else
+	{
+		Gui_ConflictSolver_DuplicateLV.Enabled := True
+		Gui_ConflictSolver_DuplicateLV.Visible := True
+		Gui_ConflictSolver_ContainerLV.Enabled := True
+		Gui_ConflictSolver_ContainerLV.Visible := True
+		Gui_ConflictSolver_OverlapLV.Enabled := False
+		Gui_ConflictSolver_OverlapLV.Visible := False
+		Gui_ConflictSolver["BytesConflict"].Visible := False
+	}
+}
+
+Gui_ConflictSolver_CancelMIXReconstruction_OnClick(GuiObj := "", Info := "")
+{
+	Gui_ConflictSolver.Hide()
+	global Gui_ConflictSolver_Status := -1
+}
+
+Gui_ControlPanel_LV_UpdateColors(*)
+{
+	Gui_ControlPanel["LV"].Opt("-Redraw")
+	Gui_ControlPanel_LV_Colors.UpdateProps() ; sync LV info to the CLV
+	Loop Gui_ControlPanel["LV"].GetCount()
+		Gui_ControlPanel_LV_SetRowColors(A_Index)
+	Gui_ControlPanel["LV"].Opt("+Redraw")
+}
+
+Gui_ConflictSolver_OverlapLV_ItemCheck(GuiCtrlObj, Row, Checked)
+{
+	if Checked and (Gui_ConflictSolver_OverlapLV.GetText(Row,2) == "")
+	{ ; if this row was already settled
+		Gui_ConflictSolver_OverlapLV.Modify(Row, "-Check")
+		return
+	}
+	Gui_ConflictSolver_OverlapLV.Opt("-Redraw")
+	ConflictMap := PublicAPIValue()
+	GarbageMap := Map()
+	OutputFileSize := ComputeOutputFileSize(ConflictMap.LookUpTable)
+	Loop Gui_ConflictSolver_OverlapLV.GetCount()
+	{
+		if (Gui_ConflictSolver_OverlapLV.GetNext(A_Index-1,"C") == A_Index)
+		{
+			Key1 := Gui_ConflictSolver_OverlapLV.GetText(A_Index,1)
+			Key1 := SubStr(Key1, 1, InStr(Key1, "(")-1)+0
+			GarbageMap[Key1] := True
+			OutputFileSize -= ConflictMap.LookUpTable[Key1].Size
+		}
+	}
+	ChangeBytesConflictText(OutputFileSize, ConflictMap.MaxSize)
+	Gui_ConflictSolver_OverlapLV_Colors.UpdateProps() ; sync LV info to the CLV
+	Loop Gui_ConflictSolver_OverlapLV.GetCount()
+	{
+		if (Gui_ConflictSolver_OverlapLV.GetNext(A_Index-1,"C") == A_Index)
+		{
+			Gui_ConflictSolver_OverlapLV.Modify(A_Index, "Col2", "")
+			Gui_ConflictSolver_OverlapLV_Colors.Row(A_Index, 0x00FF7F, 0x000000)
+		}
+		else
+		{
+			Key1 := Gui_ConflictSolver_OverlapLV.GetText(A_Index,1)
+			Key1 := SubStr(Key1, 1, InStr(Key1, "(")-1)+0
+			IndexesGroup := ""
+			For Key2 in ConflictMap.OverlapMap[Key1]
+			{
+				if !GarbageMap.Has(Key2)
+				{
+					if (IndexesGroup != "")
+						IndexesGroup .= "  ,  "
+					IndexesGroup .= Key2 . "(" . Format("{:08X}",ConflictMap.LookUpTable[Key2].ID) . ")"
+				}
+			}
+			Gui_ConflictSolver_OverlapLV.Modify(A_Index, "Col2", IndexesGroup)
+			if (IndexesGroup == "")
+				Gui_ConflictSolver_OverlapLV_Colors.Row(A_Index, 0x00FF7F, 0x000000)
+			else Gui_ConflictSolver_OverlapLV_Colors.Row(A_Index, 0xFF0000, 0xFFFFFF)
+		}
+	}
+	Loop Gui_ConflictSolver_OverlapLV.GetCount("Column") - 1
+			Gui_ConflictSolver_OverlapLV.ModifyCol(A_Index, "AutoHdr Center")
+	Gui_ConflictSolver_OverlapLV.Opt("+Redraw")
+}
+
+Gui_ConflictSolver_OverlapLV_UpdateColors(*)
+{
+	Gui_ConflictSolver_OverlapLV_Colors.UpdateProps() ; sync LV info to the CLV
+	Loop Gui_ConflictSolver_OverlapLV.GetCount()
+	{
+		if (Gui_ConflictSolver_OverlapLV.GetText(A_Index,2) == "")
+			Gui_ConflictSolver_OverlapLV_Colors.Row(A_Index, 0x00FF7F, 0x000000)
+		else Gui_ConflictSolver_OverlapLV_Colors.Row(A_Index, 0xFF0000, 0xFFFFFF)
+	}
+}
+
+Gui_ConflictSolver_ContainerLV_ItemCheck(GuiCtrlObj, Row, Checked)
+{
+	Gui_ConflictSolver_ContainerLV_Colors.UpdateProps() ; sync LV info to the CLV
+	Gui_ConflictSolver_ContainerLV_Colors.Row(Row, Checked?0xFF8B00:0xFFD700, 0x000000)
+}
+
+Gui_ConflictSolver_ContainerLV_UpdateColors(*)
+{
+	Gui_ConflictSolver_ContainerLV.Opt("-Redraw")
+	Gui_ConflictSolver_ContainerLV_Colors.UpdateProps() ; sync LV info to the CLV
+	Loop Gui_ConflictSolver_ContainerLV.GetCount()
+		Gui_ConflictSolver_ContainerLV_Colors.Row(A_Index, (Gui_ConflictSolver_ContainerLV.GetNext(A_Index-1,"C") == A_Index)?0xFF8B00:0xFFD700, 0x000000)
+	Gui_ConflictSolver_ContainerLV.Opt("+Redraw")
+}
+
+Gui_ConflictSolver_DuplicateLV_UpdateColors(*)
+{
+	Gui_ConflictSolver_DuplicateLV.Opt("-Redraw")
+	Gui_ConflictSolver_DuplicateLV_Colors.UpdateProps() ; sync LV info to the CLV
+	Loop Gui_ConflictSolver_DuplicateLV.GetCount()
+	{
+		if IsInteger(Gui_ConflictSolver_DuplicateLV.GetText(A_Index,1))
+			Gui_ConflictSolver_DuplicateLV_Colors.Row(A_Index, 0x00FF7F, 0x000000)
+		else Gui_ConflictSolver_DuplicateLV_Colors.Row(A_Index, 0xFF0000, 0xFFFFFF)
+	}
+	Gui_ConflictSolver_DuplicateLV.Opt("+Redraw")
+}
+
+Gui_ConflictSolver_DuplicateLV_Menu_Show(LV, Row)
+{
+	if Row
+	{
+		Gui_ConflictSolver_DuplicateLV_Menu.Delete()
+		Loop Parse Gui_ConflictSolver_DuplicateLV.GetText(Row,2), ",", A_Space
+			Gui_ConflictSolver_DuplicateLV_Menu.Add(A_LoopField, Gui_ConflictSolver_DuplicateLV_SelectIndex, "BarBreak")
+		MouseGetPos &X, &Y
+		Gui_ConflictSolver_DuplicateLV_Menu.Show(X, Y)
+	}
+}
+
+Gui_ConflictSolver_DuplicateLV_SelectIndex(ItemName, ItemPos, MyMenu)
+{
+	Row := Gui_ConflictSolver_DuplicateLV.GetNext()
+	Gui_ConflictSolver_DuplicateLV.Modify(Row, "-Select Col1", ItemName)
+	Gui_ConflictSolver_DuplicateLV.ModifyCol(1, "AutoHdr Integer Center")
+	Gui_ConflictSolver_DuplicateLV_Colors.UpdateProps() ; sync LV info to the CLV
+	Gui_ConflictSolver_DuplicateLV_Colors.Row(Row, 0x00FF7F, 0x000000)
+}
+
+AddMIXtoList(GuiObj := "", Info := "")
+{
+	SelectedFiles := FileSelect("M3", , "Select Target Archives")
+	if (SelectedFiles.Length > 0)
+	{
+		Gui_ControlPanel_Progress.Value := 0
+		Gui_ControlPanel_Progress.Opt("Range0-" . SelectedFiles.Length * 4)
+		Gui_ControlPanel_Progress.Visible := True
+
+		DuplicateChecker := ""
+		RowCount := Gui_ControlPanel["LV"].GetCount()
+		Loop RowCount
+			DuplicateChecker .= "<|>" . Gui_ControlPanel["LV"].GetText(A_Index,3)
+		Loop SelectedFiles.Length
+		{
+			if !InStr(DuplicateChecker, "<|>" . SelectedFiles[A_Index])
+			{
+				Gui_ControlPanel["LV"].Add(, , , SelectedFiles[A_Index])
+				RowCount++
+				MixFileObj := FileRead(SelectedFiles[A_Index], "RAW")
+				MixHeaderStatus := GetMixHeaderStatus(&MixFileObj)
+				Gui_ControlPanel["LV"].Modify(RowCount, "Col1", MixHeaderStatus)
+				LMDStatus := GetLMDStatus(&MixFileObj)
+				Gui_ControlPanel["LV"].Modify(
+					RowCount,
+					(((MixHeaderStatus == LMDStatus) and (MixHeaderStatus == "Healthy")) or InStr(MixHeaderStatus, "Unknown"))
+					? "Col2"
+					: "Check Col2"
+					, LMDStatus)
+				Gui_ControlPanel_LV_Colors.UpdateProps() ; sync LV info to the CLV
+				Gui_ControlPanel_LV_SetRowColors(RowCount)
+			}
+		}
+		RowCount := Gui_ControlPanel["LV"].GetCount("Column") - 1
+		Loop RowCount - 1
+			Gui_ControlPanel["LV"].ModifyCol(A_Index, "AutoHdr Text Center")
+		Gui_ControlPanel["LV"].ModifyCol(RowCount, "AutoHdr Text Left")
+
+		Gui_ControlPanel_Progress.Visible := False
+	}
+}
+
+Gui_ControlPanel_LV_SetRowColors(Row)
+{
+	GetColorFromStatus(Gui_ControlPanel["LV"].GetText(Row,1),&Color_BG,&Color_TX)
+	Gui_ControlPanel_LV_Colors.Cell(Row, 1, Color_BG, Color_TX)
+	GetColorFromStatus(Gui_ControlPanel["LV"].GetText(Row,2),&Color_BG,&Color_TX)
+	Gui_ControlPanel_LV_Colors.Cell(Row, 2, Color_BG, Color_TX)
+}
+
+Gui_ControlPanel_LV_Menu_Show(LV, Item, IsRightClick, X, Y)
+{
+	Gui_ControlPanel_LV_Menu.Show(X, Y)
+}
+
+Gui_ControlPanel_LV_DeleteRows(*)
+{
+	Count := Gui_ControlPanel["LV"].GetCount()
+	if (Count > 0)
+	{
+		Gui_ControlPanel["LV"].Opt("-Redraw")
+		Loop Count
+		{
+			Index := Count-A_Index+1
+			if (Gui_ControlPanel["LV"].GetNext(Index-1) == Index)
+				Gui_ControlPanel["LV"].Delete(Index)
+		}
+		Gui_ControlPanel_LV_Colors.UpdateProps() ; sync LV info to the CLV
+		Gui_ControlPanel["LV"].Opt("+Redraw")
+	}
+}
+
+reMIXAllMIXTargets(GuiObj, Info)
+{
+	Gui_ControlPanel.Opt("+Disabled")
+	if FileExist(File_OperationLog)
+		FileDelete File_OperationLog
+	Count := Gui_ControlPanel["LV"].GetCount()
+	Gui_ControlPanel_Progress.Visible := True
+	Gui_ControlPanel_Progress.Value := 0
+	reMIX_Mode := Gui_ControlPanel["ModeSelector"].Value
+	CheckedCount := 0
+	Loop Count
+	{
+		if (Gui_ControlPanel["LV"].GetNext(A_Index-1,"C") == A_Index)
+			CheckedCount++
+	}
+	if (reMIX_Mode == 1)
+		Gui_ControlPanel_Progress.Opt("Range0-" . CheckedCount * 2)
+	else if (reMIX_Mode == 2)
+		Gui_ControlPanel_Progress.Opt("Range0-" . CheckedCount * 8)
+	else if (reMIX_Mode == 3)
+		Gui_ControlPanel_Progress.Opt("Range0-" . CheckedCount * 11)
+	Loop Count
+	{
+		Index := Count-A_Index+1
+		if (Gui_ControlPanel["LV"].GetNext(Index-1,"C") == Index)
+		{
+			Status := reMIX_Level_%reMIX_Mode%(Gui_ControlPanel["LV"].GetText(Index,3))
+			if (Status == -1) ; the user tells us to cancel reconstruction but instead just build the MIX File
+				Status := reMIX_Level_2(Gui_ControlPanel["LV"].GetText(Index,3))
+			if Status
+			{
+				Gui_ControlPanel["LV"].Delete(Index)
+				Gui_ControlPanel_LV_Colors.UpdateProps() ; sync LV info to the CLV
+			}
+		}
+	}
+	Gui_ControlPanel_Progress.Visible := False
+	Gui_ControlPanel.Opt("-Disabled")
+	Gui_ControlPanel.Show()
+}
+
+ConflicSolver_Submit(GuiObj)
+{
+	isSettled := True
+	if Gui_ConflictSolver_OverlapLV.Visible
+	{
+		Loop Gui_ConflictSolver_OverlapLV.GetCount()
+		{
+			if (Gui_ConflictSolver_OverlapLV.GetText(A_Index,2) != "")
+			{
+				isSettled := False
+				SetTimer ReOpenConflictSolver, -250
+				break
+			}
+		}
+	}
+	else
+	{
+		Loop Gui_ConflictSolver_DuplicateLV.GetCount()
+		{
+			if (Gui_ConflictSolver_DuplicateLV.GetText(A_Index,1) == "")
+			{
+				isSettled := False
+				SetTimer ReOpenConflictSolver, -250
+				break
+			}
+		}
+	}
+	if isSettled
+		global Gui_ConflictSolver_Status := False
+}
+
+ReOpenConflictSolver()
+{
+	Gui_ConflictSolver.Show("Center")
+	Msgbox "There are still rows that you still haven't settled yet(Marked with Red Color). Choose a specific index among the duplicate group by Double-Clicking a Row with Red Color.", "Unsettled Duplicates Detected!", "Owner" . Gui_ConflictSolver.Hwnd
 }
 
 LMDSelector_Select(GuiObj)
@@ -133,16 +478,16 @@ LMDSelector_Select(GuiObj)
 	if (Address != "")
 	{
 		Gui_LMDSelector.Hide()
-		LMDSelector_ChosenAddress(Address)
+		PublicAPIValue(Address)
 	}
 }
 
-LMDSelector_ChosenAddress(NewAddress := "")
+PublicAPIValue(NewValue := "")
 {
-	static Address := 0
-	if (NewAddress != "")
-		Address := NewAddress
-	return Address
+	static Value := 0
+	if (NewValue != "")
+		Value := NewValue
+	return Value
 }
 
 LMDSelector_AutoPick()
@@ -171,145 +516,482 @@ LMDSelector_AutoPick()
 
 reMIX_Level_1(FileName)
 { ; Fix Header
-	MixFileObj := FileRead(Dir_Work . FileName, "RAW")
+	MixFileObj := FileRead(FileName, "RAW")
 	if !IsObject(MixFileObj)
 	{
-		msgbox "Failed to Read Mix File:`n" . FileName
-		return
+		msgbox "Failed to Read MIX Archive:`n" . FileName
+		return false
 	}
+	Gui_ControlPanel_Progress.Value++
 		; ~~~~~~~~~~~~~~~~~~~~~~~~~~~ Fix Header
 	NumPut("UInt", 0x00000000, MixFileObj)
 	NumPut("UInt", MixFileObj.Size - 10 - (12 * NumGet(MixFileObj, 4, "UShort")), MixFileObj, 6)
 		; ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	FromOldFilePath_SaveFuffer_ToNewFilePath(&FileName,&MixFileObj)
+	Gui_ControlPanel_Progress.Value++
+	return true
 }
 
 reMIX_Level_2(FileName)
 { ; Recover LMD File at Lookup Table -> Fix Header
-	MixFileObj := FileRead(Dir_Work . FileName, "RAW")
+	MixFileObj := FileRead(FileName, "RAW")
 	if !IsObject(MixFileObj)
 	{
-		msgbox "Failed to Read Mix File:`n" . FileName
-		return
+		msgbox "Failed to Read MIX Archive:`n" . FileName
+		return false
 	}
+	Gui_ControlPanel_Progress.Value++
 
-	#IncludeAgain "Lib\GetMixInformations.ahk2"
+	#IncludeAgain "Lib\GetMixInformations.ahk2" ; 4 progress value added after operation in this include
 
-	if (LMDFile_OffsetfromBody.Length >= 1) and (LMDInfo_Index.Length + InvalidInfo_Index.Length >= 1)
+	if (LMDFile_OffsetfromBody.Length >= 1) and (LMDLookup.Length + InvalidInfo_Index.Length >= 1)
 	{
 		#IncludeAgain "Lib\LMDSelector_ChooseLMD.ahk2"
-
 		NumPut("UInt", 0x366E051F, ; LMD ID
-		       "UInt", LMDFile_OffsetfromBody,
-		       "UInt", NumGet(Area_Body_Ptr + LMDFile_OffsetfromBody + 32, "UInt"), ; LMD Size
-		       Area_Info_Ptr + ( 12 * ( ( LMDInfo_Index.Length >= 1 ) ? LMDInfo_Index[1] : InvalidInfo_Index[1] ) ) ) ; LMD LookUp Table Ptr
+		       "UInt", File_StartingOffsetfromBody,
+		       "UInt", NumGet(Area_Body_Ptr + File_StartingOffsetfromBody + 32, "UInt"), ; LMD Size
+		       Area_Info_Ptr + ( 12 * ( ( LMDLookup.Length >= 1 ) ? LMDLookup[LMDLookup.Length].Index : InvalidInfo_Index[1] ) ) ) ; LMD LookUp Table Ptr
+		Gui_ControlPanel_Progress.Value++
+			; ~~~~~~~~~~~~~~~~~~~~~~~~~~~ Eliminate LMD Duplicates
+		if (LMDLookup.Length >= 2)
+		{
+			RandomNumber := Buffer(4)
+			Loop LMDLookup.Length - 1
+			{
+				Loop {
+					NumPut("UInt", Random(0x0,0xFFFFFFFF), RandomNumber)
+				} Until !InBin(Area_Info_Ptr, Area_Info_Size, RandomNumber.Ptr, 4)
+				NumPut("UInt", NumGet(RandomNumber,"UInt"),
+				       Area_Info_Ptr + ( 12 * LMDLookup[A_Index].Index ) ) ; LMD LookUp Table Ptr
+			}
+		}
+		Gui_ControlPanel_Progress.Value++
+			; ~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
 	}
+	else Gui_ControlPanel_Progress.Value += 2
 
 		; ~~~~~~~~~~~~~~~~~~~~~~~~~~~ Fix Header
 	NumPut("UInt", 0x00000000, MixFileObj)
-	NumPut("UInt", MixFileObj.Size - 10 - (12 * NumGet(MixFileObj, 4, "UShort")), MixFileObj, 6)
+	NumPut("UInt", Area_Body_Size, MixFileObj, 6)
 		; ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 	FromOldFilePath_SaveFuffer_ToNewFilePath(&FileName,&MixFileObj)
+	Gui_ControlPanel_Progress.Value++
+	return true
 }
 
 reMIX_Level_3(FileName)
-{ ; Reconstruct Mix File -> Recover LMD File at Lookup Table -> Fix Header
-	MixFileObj := FileRead(Dir_Work . FileName, "RAW")
+{ ; Reconstruct MIX Archive -> Recover LMD File at Lookup Table -> Fix Header
+	MixFileObj := FileRead(FileName, "RAW")
 	if !IsObject(MixFileObj)
 	{
-		msgbox "Failed to Read Mix File:`n" . FileName
-		return
+		msgbox "Failed to Read MIX Archive:`n" . FileName
+		return false
 	}
 	reMIX_FileObj := Buffer(MixFileObj.Size)
 	if !IsObject(reMIX_FileObj)
 	{
 		msgbox "Failed to Allocate Secondary Buffer:`n" . FileName
-		return
+		return false
 	}
+	Gui_ControlPanel_Progress.Value++
 	
-	#IncludeAgain "Lib\GetMixInformations.ahk2"
+	RedoreMIX:
+	#IncludeAgain "Lib\GetMixInformations.ahk2" ; 4 progress value added after operation in this include
 
+	/*
+		Validate LookUpTable by Eliminating Garbage Informations:
+		Case 1: one or more indexes have all their informations equal to each other. (ask user for help)
+		Case 2: an index acting like a container was detected with one or more indexes inside it. (ask user for help)
+		Case 3: an index overlaps with one or more indexes. (auto eliminate some garbage then ask user for help)
+	*/
+	if (LookUpTable.Count >= 2)
+	{
+			; ~~~~~~~~~~~~~~~~~~~~~~~~~~~ Stage 3: let user manually eliminate duplicate and contained cases.
+		if ((DuplicateList.Length + ContainerMap.Count) > 0)
+		{
+			ConflictSolver_ChangeMode(0)
+			Gui_ConflictSolver_DuplicateLV.Opt("-Redraw")
+			Gui_ConflictSolver_ContainerLV.Opt("-Redraw")
+
+			Gui_ConflictSolver_DuplicateLV.Delete()
+			Gui_ConflictSolver_DuplicateLV_Colors.UpdateProps() ; sync LV info to the CLV
+			Gui_ConflictSolver_DuplicateLV_Colors.Clear()
+			Gui_ConflictSolver_ContainerLV.Delete()
+			Gui_ConflictSolver_ContainerLV_Colors.UpdateProps() ; sync LV info to the CLV
+			Gui_ConflictSolver_ContainerLV_Colors.Clear()
+
+			Loop DuplicateList.Length
+			{
+				IndexesGroup := ""
+				For Key in DuplicateList[A_Index]
+				{
+					if (A_Index > 1)
+						IndexesGroup .= "  ,  "
+					IndexesGroup .= Key . "(" . ID2Name(LookUpTable[Key].ID, &LMDMap) . ")"
+				}
+				Gui_ConflictSolver_DuplicateLV.Add("", , IndexesGroup, Format("0x{:08X}",LookUpTable[DuplicateList[A_Index][1]].OffsetfromBody), LookUpTable[DuplicateList[A_Index][1]].Size)
+				Gui_ConflictSolver_DuplicateLV_Colors.UpdateProps() ; sync LV info to the CLV
+				Gui_ConflictSolver_DuplicateLV_Colors.Row(A_Index, 0xFF0000, 0xFFFFFF)
+			}
+			Gui_ConflictSolver_DuplicateLV.ModifyCol(3, ,"Relative Offset From Body(" . Format("0x{:X}",Area_Body_Offset) . ")")
+			Loop Gui_ConflictSolver_DuplicateLV.GetCount("Column") - 1
+				Gui_ConflictSolver_DuplicateLV.ModifyCol(A_Index, "AutoHdr Center")
+			For Key1 in ContainerMap
+			{
+				IndexesGroup := ""
+				For Key2 in ContainerMap[Key1]
+				{
+					if (A_Index > 1)
+						IndexesGroup .= "  ,  "
+					IndexesGroup .= Key2 . "(" . ID2Name(LookUpTable[Key2].ID, &LMDMap) . ")"
+				}
+				Gui_ConflictSolver_ContainerLV.Add("", Key1 . "(" . ID2Name(LookUpTable[Key1].ID, &LMDMap) . ")", IndexesGroup, Format("0x{:X}",LookUpTable[Key1].OffsetfromBody), LookUpTable[Key1].Size)
+				Gui_ConflictSolver_ContainerLV_Colors.UpdateProps() ; sync LV info to the CLV
+				Gui_ConflictSolver_ContainerLV_Colors.Row(A_Index, 0xFFD700, 0x000000)
+			}
+			Gui_ConflictSolver_ContainerLV.ModifyCol(3, ,"Relative Offset From Body(" . Format("0x{:X}",Area_Body_Offset) . ")")
+			Loop Gui_ConflictSolver_ContainerLV.GetCount("Column") - 1
+				Gui_ConflictSolver_ContainerLV.ModifyCol(A_Index, "AutoHdr Center")
+			Gui_ConflictSolver_Comment.Value := DuplicateList.Length . " Duplicate Informations and " . ContainerMap.Count . " Contained Indexes Group have been Detected inside:`n" . FileName . "
+(
+
+
+What is the case about Duplicate Informations?
+* When two or more File ID's(found at the Lookup Table) have the same OffsetFromBody and FileSize. reMIXer will be confused on choosing which one among these File ID's is correct. File ID is important as this is the representation of the File's Name itself. So when a WRONG File ID was assigned for this File then the game will fail to recognize this file as it is interpreted with a different File Name(due to a different File ID). This could cause the Game to Crash if the Correct File ID wasn't Selected. So its important that you select which one of them is correct File ID.
+
+What is the case about Group Contained Conflict?
+* When the file territory of one or more File ID's(Contained) was found inside the file territory of another File ID(Container). The reMIXer cannot decide if the Container is a garbage information, or if the contained ones are garbage informations. Deleting a Correct File Information while Including Wrong File Informations will crash the game so be sure to correctly settle your checked/unchecked choices.
+
+
+To Settle all Duplicate Informations:
+    1) Double-Click a Specific Row you wish to Settle.
+    2) Select the File Index that you think is the GENUINE DATA among the Group.
+    2.1) The rest who are unselected inside this Group will be marked as GARBAGE/CORRUPTED DATA, deleting it in our Lookup Table.
+    2.2) Keep in mind that selecting a WRONG File Index(therefore getting deleted) will assign a garbage name to this file. The Game will CRASH if this file's real name is needed to be used.
+    3) Repeat this process to all fields marked with RED Color.
+
+To Settle all Group Contained Conflicts:
+    * Providing a Row with Check Mark will treat only the Container File Index(Column 1) as GARBAGE/CORRUPTED DATA, deleting it in our Lookup Table.
+    * Providing a Row with Uncheck Mark will treat all file indexes inside the Contained Group(Column 2) as GARBAGE/CORRUPTED DATA, deleting it in our Lookup Table.
+    * Keep in mind that settling a WRONG Choice(therefore getting deleted). The Game will CRASH if this File Index were originally being used but is now missing.
+
+
+If you do not want to continue helping this tool settle the file information conflicts, click the Cancel MIX Reconstruction button. Keep in mind that will perform Level 2 Mode of Operation for this MIX Archive.
+
+Close this Window once you've finished settling the Duplicate and Container Conflicts.	
+)"
+
+			Gui_ConflictSolver_DuplicateLV.Opt("+Redraw")
+			Gui_ConflictSolver_ContainerLV.Opt("+Redraw")
+			global Gui_ConflictSolver_Status := True
+			Gui_ConflictSolver.Show("Center")
+			Loop
+			{
+				sleep 1
+				if (Gui_ConflictSolver_Status == -1)
+				{
+					Gui_ControlPanel.Show("Center")
+					return Gui_ConflictSolver_Status
+				}
+				else if !Gui_ConflictSolver_Status
+					break
+
+			}
+			Gui_ControlPanel.Show("Center")
+			Loop Gui_ConflictSolver_DuplicateLV.GetCount()
+			{
+				Key := Gui_ConflictSolver_DuplicateLV.GetText(A_Index,1)
+				Loop Parse Gui_ConflictSolver_DuplicateLV.GetText(A_Index,2), ",", A_Space
+				{
+					if (A_LoopField != Key)
+					{
+						Key1 := A_LoopField
+						#IncludeAgain "Lib\RemoveGarbageToLookupTable.ahk2"
+					}
+				}
+			}
+			Loop Gui_ConflictSolver_ContainerLV.GetCount()
+			{
+				if (Gui_ConflictSolver_ContainerLV.GetNext(A_Index-1,"C") == A_Index)
+				{ ; Remove File Index acting as a Container
+					Key1 := Gui_ConflictSolver_ContainerLV.GetText(A_Index,1)
+					#IncludeAgain "Lib\RemoveGarbageToLookupTable.ahk2"
+				}
+				else
+				{ ; Remove Contained File Indexes
+					Loop Parse Gui_ConflictSolver_ContainerLV.GetText(A_Index,2), ",", A_Space
+					{
+						Key1 := A_LoopField
+						#IncludeAgain "Lib\RemoveGarbageToLookupTable.ahk2"
+					}
+				}
+			}
+		}
+		DuplicateList := "" ; free memory
+		ContainerMap := "" ; free memory
+		Gui_ControlPanel_Progress.Value++
+			; ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+		
+			; ~~~~~~~~~~~~~~~~~~~~~~~~~~~ Stage 4: Analyze then Eliminate Garbage Informations
+		OverlapMap_Garbage := Map()
+		while (OverlapMap.Count > 0)
+		{
+			OverlappedFilesCount_Min := 0x7FFFFFFF
+			OverlappedFilesCount_Max := 0
+			For Key in OverlapMap
+			{
+				OverlappedFilesCount_Min := Min(OverlappedFilesCount_Min, OverlapMap[Key].Count)
+				OverlappedFilesCount_Max := Max(OverlappedFilesCount_Max, OverlapMap[Key].Count)
+			}
+			if (OverlappedFilesCount_Min == OverlappedFilesCount_Max) ; We only have one Type of Garbage Level remaining among all indexes.
+				break
+				; ~~~~~~~~~~~~~~~~~~~~~~~~~~~ Collect All Files with the Highest Garbage Level
+			OverlapMap_Garbage.Clear()
+			For Key in OverlapMap
+			{
+				if (OverlapMap[Key].Count == OverlappedFilesCount_Max)
+					OverlapMap_Garbage[Key] := OverlapMap[Key]
+			}
+				; ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+			For Key1 in OverlapMap_Garbage
+			{ ; eliminate garbage files
+				For Key2 in OverlapMap_Garbage[Key1]
+				{
+					if OverlapMap.Has(Key2)
+					{
+						if OverlapMap[Key2].Has(Key1) and (OverlapMap[Key2].Count < OverlappedFilesCount_Max)
+						{
+							if (OverlapMap[Key2].Count >= 2)
+								OverlapMap[Key2].Delete(Key1)
+							else OverlapMap.Delete(Key2)
+						}
+					}
+				}
+				;Eliminate Garbage File
+				LookUpTable.Delete(Key1)
+				OverlapMap.Delete(Key1)
+			}
+		}
+		Gui_ControlPanel_Progress.Value++
+			; ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+			; ~~~~~~~~~~~~~~~~~~~~~~~~~~~ Stage 5: Ask user to manually eliminate overlap garbage files
+		if OverlapMap.Count
+		{
+			ConflictSolver_ChangeMode(1)
+			Gui_ConflictSolver_OverlapLV.Opt("-Redraw")
+
+			Gui_ConflictSolver_OverlapLV.Delete()
+			Gui_ConflictSolver_OverlapLV_Colors.UpdateProps() ; sync LV info to the CLV
+			Gui_ConflictSolver_OverlapLV_Colors.Clear()
+
+			For Key1 in OverlapMap
+			{
+				IndexesGroup := ""
+				For Key2 in OverlapMap[Key1]
+				{
+					if (A_Index > 1)
+						IndexesGroup .= "  ,  "
+					IndexesGroup .= Key2 . "(" . ID2Name(LookUpTable[Key2].ID, &LMDMap) . ")"
+				}
+				Gui_ConflictSolver_OverlapLV.Add("", Key1 . "(" . ID2Name(LookUpTable[Key1].ID, &LMDMap) . ")", IndexesGroup, Format("0x{:X}",LookUpTable[Key1].OffsetfromBody), LookUpTable[Key1].Size)
+				Gui_ConflictSolver_OverlapLV_Colors.UpdateProps() ; sync LV info to the CLV
+				Gui_ConflictSolver_OverlapLV_Colors.Row(A_Index, 0xFF0000, 0xFFFF00)
+			}
+			Gui_ConflictSolver_OverlapLV.ModifyCol(3, ,"Relative Offset From Body(" . Format("0x{:X}",Area_Body_Offset) . ")")
+			Loop Gui_ConflictSolver_OverlapLV.GetCount("Column") - 1
+				Gui_ConflictSolver_OverlapLV.ModifyCol(A_Index, "AutoHdr Center")
+
+			Gui_ConflictSolver_Comment.Value := OverlapMap.Count . " Overlapping File Informations have been Detected inside:`n" . FileName . "
+(
+
+
+What is the case about Overlapping Conflicts?
+* When the file territory of a certain File ID is overlapping one or more File ID's territory. The reMIXer cannot decide if the Overlapping file is a garbage information. Deleting a Correct File Information while Including Wrong File Informations will crash the game so be sure to correctly settle your checked/unchecked choices.
+
+
+To Settle all Overlapping Conflicts:
+* Providing a Row with Check Mark will treat the Overlapping Index(Column 1) as GARBAGE/CORRUPTED DATA, deleting it in our Lookup Table.
+* Providing a Row with UnCheck Mark will treat the Overlapping Index(Column 1) as a GENUINE DATA, maintaining it in our Lookup Table.
+* Keep in mind that settling a WRONG Choice(therefore getting deleted):
+	- This tool could throw an error afterwards telling you to redo your settlement with the conflicts.
+	- Else if this tool didn't detect your mistake then the Game will CRASH if this File Index were originally being used but is now missing.
+
+
+If you do not want to continue helping this tool settle the file information conflicts, click the Cancel MIX Reconstruction button. Keep in mind that will perform Level 2 Mode of Operation for this MIX Archive.
+
+Close this Window once all rows are marked as with green color.
+)"
+			OutputFileSize := ComputeOutputFileSize(LookUpTable)
+			ChangeBytesConflictText(OutputFileSize, MixFileObj.Size)
+			Gui_ConflictSolver_OverlapLV.Opt("+Redraw")
+			global Gui_ConflictSolver_Status := True
+			PublicAPIValue({OverlapMap:OverlapMap,LookUpTable:LookUpTable,MaxSize:MixFileObj.Size})
+			Gui_ConflictSolver.Show("Center")
+			Loop
+			{
+				sleep 1
+				if (Gui_ConflictSolver_Status == -1)
+				{
+					Gui_ControlPanel.Show("Center")
+					return Gui_ConflictSolver_Status
+				}
+				else if !Gui_ConflictSolver_Status
+					break
+
+			}
+			Gui_ControlPanel.Show("Center")
+			Loop Gui_ConflictSolver_OverlapLV.GetCount()
+			{
+				if (Gui_ConflictSolver_OverlapLV.GetNext(A_Index-1,"C") == A_Index)
+				{
+					Key := Gui_ConflictSolver_OverlapLV.GetText(A_Index,1)
+					if LookUpTable.Has(Key)
+						LookUpTable.Delete(Key)
+				}
+			}
+		}
+		OverlapMap := "" ; free memory
+		Gui_ControlPanel_Progress.Value++
+			; ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	}
+	else Gui_ControlPanel_Progress.Value += 3
+		; ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	
 	reMIX_Area_Info_Offset := 0xA
-	reMIX_Files_Count := Area_Info_ValidFieldsCount + 1 ; +1 for the LMD info region
-	reMIX_Area_Info_Size := reMIX_Files_Count * 12 ; incase we detected a Corrupted LMD Info, then we add additional 12 bytes size to our new MIX File for our LMD Info
+	reMIX_Area_Info_Ptr := reMIX_FileObj.Ptr + Area_Info_Offset
+	reMIX_Files_Count := LookUpTable.Count + 1 ; +1 for the LMD info region
+	reMIX_Area_Info_Size := reMIX_Files_Count * 12 ; incase we detected a Corrupted LMD Info, then we add additional 12 bytes size to our new MIX Archive for our LMD Info
 	reMIX_Area_Body_Offset := reMIX_Area_Info_Size + reMIX_Area_Info_Offset
 	reMIX_Area_Body_Size := 0
 	reMIX_Area_Body_MaxAllowedSize := reMIX_FileObj.Size - reMIX_Area_Body_Offset
 	reMIX_Area_Body_Ptr := reMIX_FileObj.Ptr + reMIX_Area_Body_Offset
 
-		; ~~~~~~~~~~~~~~~~~~~~~~~~~~~ reconstruct the Information Field
-	Seeker := MixFileObj.Ptr + Area_Info_Offset
-	reMIX_Seeker := reMIX_FileObj.Ptr + Area_Info_Offset
-	if (!LMDFile_OffsetfromBody.Length) ; No LMD File inside the Mix
-	{
-		DllCall("MSVCRT.dll\memset", "Ptr", reMIX_Area_Body_Ptr + reMIX_Area_Body_Size, "Int", 0xFF, "UInt", 12)
-		reMIX_Seeker += 12
+		; ~~~~~~~~~~~~~~~~~~~~~~~~~~~ reconstruct the LMD Information Field
+	if (LMDMap.Count > 0)
+	{ ; reconstruct LMD File
+		reMIX_Seeker := reMIX_Area_Body_Ptr + 52 ; pointer to dictionary list
+		For Key in LMDMap
+		{
+			StrPut(LMDMap[Key], reMIX_Seeker, "UTF-8")
+			reMIX_Seeker += StrLen(LMDMap[Key]) + 1
+		}
+		File_Size := reMIX_Seeker - reMIX_Area_Body_Ptr
+		DllCall("MSVCRT.dll\memcpy", "Ptr", reMIX_Area_Body_Ptr, "Ptr", LMD_Header_Pattern, "UInt", 32, "CDecl Ptr") ; set LMD header
+		NumPut("UInt", File_Size, ; Size
+			   "UInt", 0x00000000, ; Padding
+			   "UInt", 0x00000000, ; Padding
+			   "UInt", 0x00000005, ; GameType == RA2/RA2YR/TS/TD
+			   "UInt", LMDMap.Count, ; Names Count
+			   reMIX_Area_Body_Ptr + 32)
+			; set LMD Info at Lookup Table
+		NumPut("UInt", 0x366E051F, ; ID
+			   "UInt", 0x00000000, ; OffsetFromBody
+			   "UInt", File_Size, ; Size
+			   reMIX_Area_Info_Ptr)
 	}
+	else if (!LMDFile_OffsetfromBody.Length) ; No LMD File inside the Mix
+		NumPut("UInt", 0x366E051F, "UInt", 0xFFFFFFFF, "UInt", 0x00000000, reMIX_Area_Info_Ptr)
 	else
-	{
+	{ ; use the level 2 method of recovering LMD File
+		Seeker := Area_Info_Ptr
+		reMIX_Seeker := reMIX_Area_Info_Ptr
 		#IncludeAgain "Lib\LMDSelector_ChooseLMD.ahk2"
 		File_ID := 0x366E051F ; LMD ID
-		File_Ptr := Area_Body_Ptr + LMDFile_OffsetfromBody
+		File_Ptr := Area_Body_Ptr + File_StartingOffsetfromBody
 		File_Size := NumGet(File_Ptr+32, "UInt")
 		#IncludeAgain "Lib\MigrateFileToNewMixFile.ahk2"
 	}
-	Loop Files_Count
+	LMDMap := "" ; Free Memory
+	Gui_ControlPanel_Progress.Value++
+		; ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	
+	LookUpTable_Count := LookUpTable.Count
+	if IsObject(LookUpTable_Buffer)
+		LookUpTable_Buffer.Size := LookUpTable_Count * 2
+	else LookUpTable_Buffer := Buffer(LookUpTable_Count * 2)
+	Seeker := LookUpTable_Buffer.Ptr
+	For Key in LookUpTable
 	{
-		File_ID := NumGet(Seeker+0, "UInt")
-		Seeker += 4
-		File_StartingOffsetfromBody := NumGet(Seeker+0, "UInt")
-		Seeker += 4
-		File_Size := NumGet(Seeker+0, "UInt")
-		Seeker += 4
-		if (File_ID != 0x366E051F) ; the LMD was already constructed, so we ignore it
-		{
-			File_EndingOffsetfromBody := File_StartingOffsetfromBody+File_Size
-			if ((File_Size != 0) and (Area_Body_Size >= File_EndingOffsetfromBody)) ; valid info / not corrupted
-			{
-				File_Ptr := Area_Body_Ptr + File_StartingOffsetfromBody
-				#IncludeAgain "Lib\MigrateFileToNewMixFile.ahk2"
-			}
-		}
+		NumPut("UShort", Key, Seeker)
+		Seeker += 2
 	}
-		; ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	LookUpTable := "" ; Free Memory
 
-		; ~~~~~~~~~~~~~~~~~~~~~~~~~~~ Set the Correct Mix Header
-	NumPut("UInt", 0x00000000,
-		   "UShort", reMIX_Files_Count,
-		   "UInt", reMIX_Area_Body_Size,
-		   reMIX_FileObj)
-		; ~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-	reMIX_FileObj.Size := reMIX_Area_Info_Offset + reMIX_Area_Info_Size + reMIX_Area_Body_Size ; trim the buffer onto the exact size for this new mix file
+	starttime := A_TickCount
+	FileSize := DllCall(ReconstructMIX,
+				 "Ptr"   , MixFileObj.Ptr,
+				 "Ptr"   , reMIX_FileObj.Ptr,
+				 "UInt"  , reMIX_FileObj.Size,
+				 "Ptr"   , LookUpTable_Buffer.Ptr,
+				 "UShort", LookUpTable_Count,
+				 "CDecl UInt")
+	if !FileSize
+	{
+		if (MsgBox("MIX Archive reconstruction has encountered an error:`n" . FileName . "`n`nThis happens when you wrongfully settled file conflicts at the Conflict Solver Interface.`n`nTry to reMIX this file again and be sure to properly settle the file conflicts.`n`nWould you like to redo the conflict settlement?", "reMIXer Error", 20) == "Yes")
+			goto RedoreMIX
+		return false
+	}
+	reMIX_FileObj.Size := FileSize ; shrink the mix file
+	Gui_ControlPanel_Progress.Value++
 
 	FromOldFilePath_SaveFuffer_ToNewFilePath(&FileName,&reMIX_FileObj)
+	Gui_ControlPanel_Progress.Value++
+	return true
 }
 
-FromOldFilePath_SaveFuffer_ToNewFilePath(&FileName,&Mix_Buffer)
+ID2Name(ID, &LMDMap)
 {
-	FilePath := Dir_Done . FileName
-	if !FileExist(Dir_Done)
-		DirCreate Dir_Done
-	else if FileExist(FilePath)
-		FileDelete FilePath
-	FileAppend Mix_Buffer, FilePath, "RAW"
-	
-	FilePath := Dir_Work . FileName
+	return (LMDMap.Has(ID) ? LMDMap[ID] : Format("{:08X}",ID))
+}
+
+FromOldFilePath_SaveFuffer_ToNewFilePath(&Path,&Mix_Buffer)
+{
+	SplitPath Path, &OutFileName, &OutDir
+	FilePath := OutDir . "\reMIXed_" . OutFileName
 	if FileExist(FilePath)
-		FileDelete FilePath
+	{
+		Loop
+		{
+			FilePath := OutDir . "\reMIXed" . A_Index . "_" . OutFileName
+			if !FileExist(FilePath)
+				break
+		}
+	}
+	FileAppend Mix_Buffer, FilePath, "RAW"
+	FileAppend "Created " . FilePath, File_OperationLog
 }
 
 GetLMDStatus(&MixFileObj)
 {
-	#IncludeAgain "Lib\GetMixInformations.ahk2"
-	if (!LMDFile_OffsetfromBody.Length) ; no LMD file detected
+	#IncludeAgain "Lib\GetMixInformations.ahk2" ; 4 progress value added after operation in this include
+	if LookUpTable.Count
+	{
+		RecoveryPercentage := 0
+		For Key in LookUpTable
+		{
+			if LMDMap.Has(LookUpTable[Key].ID)
+				RecoveryPercentage++
+		}
+		RecoveryPercentage :=  100.00 * RecoveryPercentage / LookUpTable.Count
+	}
+	else RecoveryPercentage := 0
+	if !LMDFile_OffsetfromBody.Length or (RecoveryPercentage == 0) ; no LMD file detected
 		return "Unrecoverable"
-	else if (LMDInfo_Index.Length) ; LMD is considered Healthy if we found its info
-		return "Healthy"
-	else if (!InvalidInfo_Index.Length)
-		return "Reconstructable"
-	else return "Recoverable"
+	else if (LMDLookup.Length >= 1) ; LMD is considered Healthy if we found its info
+	{
+		LMDStatus := Format("{:.2f}", RecoveryPercentage) . "% Recoverable"
+		Loop LMDLookup.Length
+		{
+			if LMDLookup[A_Index].isHealthy
+				LMDStatus := "Healthy"
+		}
+		return LMDStatus
+	}
+	else if (InvalidInfo_Index.Length >= 1)
+		return Format("{:.2f}", RecoveryPercentage) . "% Recoverable"
+	else return RecoveryPercentage Format("{:.2f}", RecoveryPercentage) . "% Reconstructable"
 }
 
 GetMixHeaderStatus(&MixFileObj)
@@ -322,16 +1004,16 @@ GetMixHeaderStatus(&MixFileObj)
 
 GetColorFromStatus(Status,&Color_BG,&Color_TX)
 {
-	Switch(Status)
+	Switch
 	{
-		case "Healthy":
+		case (Status == "Healthy"):
 			Color_BG := 0x00FF7F
 			Color_TX := 0x000000
-		case "Recoverable":
-			Color_BG := 0xFFD700
-			Color_TX := 0x000000
-		case "Reconstructable":
+		case InStr(Status, "Reconstructable",True):
 			Color_BG := 0xFF8B00
+			Color_TX := 0x000000
+		case InStr(Status, "Recoverable",True):
+			Color_BG := 0xFFD700
 			Color_TX := 0x000000
 		default:
 			Color_BG := 0xFF0000
@@ -339,4 +1021,15 @@ GetColorFromStatus(Status,&Color_BG,&Color_TX)
 	}
 }
 
+PercentageToScreenWidth(Percentage)
+{
+	return Percentage * (A_ScreenWidth / 100)
+}
+
+PercentageToScreenHeight(Percentage)
+{
+	return Percentage * (A_ScreenHeight / 100)
+}
+
 #include "Lib\InBin.ahk2"
+#include "Lib\StringToCRC32.ahk2"

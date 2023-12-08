@@ -1,5 +1,5 @@
 ﻿if (LMDFile_OffsetfromBody.Length == 1)
-	LMDFile_OffsetfromBody := LMDFile_OffsetfromBody[1]
+	File_StartingOffsetfromBody := LMDFile_OffsetfromBody[1]
 else ; two or more conflicting LMD that could possibly be the real one
 {
 	Gui_LMDSelector_FilePath.Value := FileName
@@ -14,30 +14,33 @@ else ; two or more conflicting LMD that could possibly be the real one
 	{
 		Index := A_Index
 		LookupTableIndex := "Unused"
-		Loop LMDInfo_Index.Length
+		Loop LMDLookup.Length
 		{
-			if (LMDFile_OffsetfromBody[Index] == NumGet(Area_Info_OffsetFromBody_Ptr + (LMDInfo_Index[A_Index] * 12), "UInt"))
+			ReverseIndex := LMDLookup.Length - A_Index + 1
+			if (LMDFile_OffsetfromBody[Index] == NumGet(Area_Info_OffsetFromBody_Ptr + (LMDLookup[ReverseIndex].Index * 12), "UInt"))
 			{
-				LookupTableIndex := "Default"
+				LookupTableIndex := (ReverseIndex == LMDLookup.Length)?"Default":"Ignored"
 				break
 			}
 		}
-		Gui_LMDSelector_LV.Add((LookupTableIndex=="Unused")?"":"Focus Select Vis"
+
+		Gui_LMDSelector_LV.Add((LookupTableIndex=="Default")?"Focus Select Vis":""
 		                       ,Format("0x{:X}",LMDFile_OffsetfromBody[Index])
 		                       ,NumGet(Area_Body_LMD_Size_Ptr + LMDFile_OffsetfromBody[Index], "UInt")
 		                       ,NumGet(Area_Body_LMD_NamesCount_Ptr + LMDFile_OffsetfromBody[Index], "UInt")
 		                       ,LookupTableIndex)
 	}
-	Gui_LMDSelector_LV.ModifyCol(1, "Integer Sort")
+	Gui_LMDSelector_LV.ModifyCol(1, "Integer Sort", "Relative Offset From Body(" . Format("0x{:X}",Area_Body_Offset) . ")")
 	Loop Gui_LMDSelector_LV.GetCount("Column")
 		Gui_LMDSelector_LV.ModifyCol(A_Index, "AutoHdr Center")
 	if !Gui_LMDSelector_LV.GetNext()
 		Gui_LMDSelector_LV.Modify(LMDSelector_AutoPick(), "Focus Select")
 		; ~~~~~~~~~~~~~~~~~~~~~~~~~~~
-	LMDSelector_ChosenAddress(-1)
+	PublicAPIValue(-1)
 	Gui_LMDSelector.Show("Center")
 	Gui_LMDSelector_LV.Opt("+Redraw")
-	while ((LMDFile_OffsetfromBody := LMDSelector_ChosenAddress()) == -1)
+	while ((File_StartingOffsetfromBody := PublicAPIValue()) == -1)
 		sleep 1
-	;msgbox LMDFile_OffsetfromBody . " " . Format("0x{:X}", LMDFile_OffsetfromBody)
+	Gui_ControlPanel.Show("Center")
+	;msgbox LMDFile_OffsetfromBody . " " . Format("0x{:X}", File_StartingOffsetfromBody)
 }
