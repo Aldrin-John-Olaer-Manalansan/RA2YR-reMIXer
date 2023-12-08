@@ -13,7 +13,6 @@ try {
 		isMigrateFileSuccessful := false
 	}
 }
-FileAppend (isMigrateFileSuccessful?"Sucess":"Failed") . " Add_File: ID=" . Format("{:08X}", File_ID) . " OffsetFromBody: " . Format("0x{:X}", File_StartingOffsetfromBody) . " Size=" . File_Size . " To_reMIX: RemainingBodySize=" . reMIX_Area_Body_MaxAllowedSize - reMIX_Area_Body_Size . "`r`n", File_OperationLog
 NumPut( "UInt", File_ID,
 		"UInt", reMIX_Area_Body_Size, ; Offset from Body
 		"UInt", File_Size,

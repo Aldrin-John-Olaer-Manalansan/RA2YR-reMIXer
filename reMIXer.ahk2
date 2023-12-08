@@ -17,9 +17,7 @@ ReconstructMIX := DllCall("GetProcAddress", "Ptr", DLLHandle, "AStr", "Reconstru
 
 #include "Lib\Class_LV_Colors.ahk2"
 
-AppVersion := "3.0.0.0"
-Dir_Done := A_ScriptDir . "\Done\"
-File_OperationLog := Dir_Done . "operation.log"
+AppVersion := "3.0.0.1"
 
 	; ~~~~~~~~~~~~~~~~~~~~~~~~~~~ Construct the Control Panel GUI
 Gui_ControlPanel := Gui("OwnDialogs ", "RA2YR reMIXer v" . AppVersion . (A_IsAdmin?" (Administrator)":""))
@@ -394,8 +392,6 @@ Gui_ControlPanel_LV_DeleteRows(*)
 reMIXAllMIXTargets(GuiObj, Info)
 {
 	Gui_ControlPanel.Opt("+Disabled")
-	if FileExist(File_OperationLog)
-		FileDelete File_OperationLog
 	Count := Gui_ControlPanel["LV"].GetCount()
 	Gui_ControlPanel_Progress.Visible := True
 	Gui_ControlPanel_Progress.Value := 0
@@ -960,7 +956,6 @@ FromOldFilePath_SaveFuffer_ToNewFilePath(&Path,&Mix_Buffer)
 		}
 	}
 	FileAppend Mix_Buffer, FilePath, "RAW"
-	FileAppend "Created " . FilePath, File_OperationLog
 }
 
 GetLMDStatus(&MixFileObj)
