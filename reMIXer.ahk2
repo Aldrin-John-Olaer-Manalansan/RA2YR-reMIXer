@@ -17,7 +17,7 @@ ReconstructMIX := DllCall("GetProcAddress", "Ptr", DLLHandle, "AStr", "Reconstru
 
 #include "Lib\Class_LV_Colors.ahk2"
 
-AppVersion := "3.0.0.1"
+AppVersion := "3.1.0.0"
 
 	; ~~~~~~~~~~~~~~~~~~~~~~~~~~~ Construct the Control Panel GUI
 Gui_ControlPanel := Gui("OwnDialogs ", "RA2YR reMIXer v" . AppVersion . (A_IsAdmin?" (Administrator)":""))
@@ -43,6 +43,7 @@ Gui_ControlPanel["LV"].OnEvent("ColClick", Gui_ControlPanel_LV_UpdateColors)
 Gui_ControlPanel_Progress := Gui_ControlPanel.AddProgress("-Smooth Range Xs Y+10 W" . PercentageToScreenWidth(41) . " H" . PercentageToScreenHeight(2), 100)
 Gui_ControlPanel_Progress.Visible := False
 Gui_ControlPanel_Progress.Value := 0
+Gui_ControlPanel.OnEvent("DropFiles", DragAndDropMIXesToList)
 Gui_ControlPanel.Show("Center")
 	; ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -136,6 +137,12 @@ https://github.com/Aldrin-John-Olaer-Manalansan/RA2YR-reMIXer/issues
 )", "How to Use RA2YR reMIXer?", "Owner" . Gui_ControlPanel.Hwnd)
 }
 
+DragAndDropMIXesToList(GuiObj, GuiCtrlObj, SelectedFiles, X, Y)
+{
+	if (GuiCtrlObj == Gui_ControlPanel["LV"])
+		AddMIXesToTargetList(SelectedFiles)
+}
+
 ComputeOutputFileSize(LookUpTable)
 {
 	OutputFileSize := (LookUpTable.Count * 12) + 10
@@ -198,7 +205,12 @@ Gui_ControlPanel_LV_UpdateColors(*)
 	Gui_ControlPanel["LV"].Opt("-Redraw")
 	Gui_ControlPanel_LV_Colors.UpdateProps() ; sync LV info to the CLV
 	Loop Gui_ControlPanel["LV"].GetCount()
-		Gui_ControlPanel_LV_SetRowColors(A_Index)
+	{
+		GetColorFromStatus(Gui_ControlPanel["LV"].GetText(A_Index,1),&Color_BG,&Color_TX)
+		Gui_ControlPanel_LV_Colors.Cell(A_Index, 1, Color_BG, Color_TX)
+		GetColorFromStatus(Gui_ControlPanel["LV"].GetText(A_Index,2),&Color_BG,&Color_TX)
+		Gui_ControlPanel_LV_Colors.Cell(A_Index, 2, Color_BG, Color_TX)
+	}
 	Gui_ControlPanel["LV"].Opt("+Redraw")
 }
 
@@ -317,11 +329,11 @@ Gui_ConflictSolver_DuplicateLV_SelectIndex(ItemName, ItemPos, MyMenu)
 	Gui_ConflictSolver_DuplicateLV_Colors.Row(Row, 0x00FF7F, 0x000000)
 }
 
-AddMIXtoList(GuiObj := "", Info := "")
+AddMIXesToTargetList(SelectedFiles)
 {
-	SelectedFiles := FileSelect("M3", , "Select Target Archives")
 	if (SelectedFiles.Length > 0)
 	{
+		Gui_ControlPanel.Opt("+Disabled")
 		Gui_ControlPanel_Progress.Value := 0
 		Gui_ControlPanel_Progress.Opt("Range0-" . SelectedFiles.Length * 4)
 		Gui_ControlPanel_Progress.Visible := True
@@ -335,10 +347,18 @@ AddMIXtoList(GuiObj := "", Info := "")
 			if !InStr(DuplicateChecker, "<|>" . SelectedFiles[A_Index])
 			{
 				Gui_ControlPanel["LV"].Add(, , , SelectedFiles[A_Index])
+				Gui_ControlPanel_LV_Colors.UpdateProps() ; sync LV info to the CLV
+				Gui_ControlPanel["LV"].ModifyCol(3, "AutoHdr Text Left")
 				RowCount++
 				MixFileObj := FileRead(SelectedFiles[A_Index], "RAW")
+
 				MixHeaderStatus := GetMixHeaderStatus(&MixFileObj)
 				Gui_ControlPanel["LV"].Modify(RowCount, "Col1", MixHeaderStatus)
+				Gui_ControlPanel["LV"].ModifyCol(1, "AutoHdr Text Center")
+				GetColorFromStatus(Gui_ControlPanel["LV"].GetText(RowCount,1),&Color_BG,&Color_TX)
+				Gui_ControlPanel_LV_Colors.Cell(RowCount, 1, Color_BG, Color_TX)
+				Gui_ControlPanel_LV_Colors.UpdateProps() ; sync LV info to the CLV
+
 				LMDStatus := GetLMDStatus(&MixFileObj)
 				Gui_ControlPanel["LV"].Modify(
 					RowCount,
@@ -346,25 +366,24 @@ AddMIXtoList(GuiObj := "", Info := "")
 					? "Col2"
 					: "Check Col2"
 					, LMDStatus)
+				Gui_ControlPanel["LV"].ModifyCol(2, "AutoHdr Text Center")
+				GetColorFromStatus(Gui_ControlPanel["LV"].GetText(RowCount,2),&Color_BG,&Color_TX)
+				Gui_ControlPanel_LV_Colors.Cell(RowCount, 2, Color_BG, Color_TX)
 				Gui_ControlPanel_LV_Colors.UpdateProps() ; sync LV info to the CLV
-				Gui_ControlPanel_LV_SetRowColors(RowCount)
 			}
 		}
-		RowCount := Gui_ControlPanel["LV"].GetCount("Column") - 1
-		Loop RowCount - 1
-			Gui_ControlPanel["LV"].ModifyCol(A_Index, "AutoHdr Text Center")
-		Gui_ControlPanel["LV"].ModifyCol(RowCount, "AutoHdr Text Left")
 
 		Gui_ControlPanel_Progress.Visible := False
+		Gui_ControlPanel.Opt("-Disabled")
+		Gui_ControlPanel.Show()
+		Gui_ControlPanel_LV_Colors.UpdateProps() ; sync LV info to the CLV
 	}
 }
 
-Gui_ControlPanel_LV_SetRowColors(Row)
+AddMIXtoList(GuiObj := "", Info := "")
 {
-	GetColorFromStatus(Gui_ControlPanel["LV"].GetText(Row,1),&Color_BG,&Color_TX)
-	Gui_ControlPanel_LV_Colors.Cell(Row, 1, Color_BG, Color_TX)
-	GetColorFromStatus(Gui_ControlPanel["LV"].GetText(Row,2),&Color_BG,&Color_TX)
-	Gui_ControlPanel_LV_Colors.Cell(Row, 2, Color_BG, Color_TX)
+	SelectedFiles := FileSelect("M3", , "Select Target Archives")
+	AddMIXesToTargetList(SelectedFiles)
 }
 
 Gui_ControlPanel_LV_Menu_Show(LV, Item, IsRightClick, X, Y)
@@ -426,6 +445,7 @@ reMIXAllMIXTargets(GuiObj, Info)
 	Gui_ControlPanel_Progress.Visible := False
 	Gui_ControlPanel.Opt("-Disabled")
 	Gui_ControlPanel.Show()
+	Gui_ControlPanel_LV_Colors.UpdateProps() ; sync LV info to the CLV
 }
 
 ConflicSolver_Submit(GuiObj)
@@ -687,14 +707,16 @@ Close this Window once you've finished settling the Duplicate and Container Conf
 				sleep 1
 				if (Gui_ConflictSolver_Status == -1)
 				{
-					Gui_ControlPanel.Show("Center")
+					Gui_ControlPanel.Show()
+					Gui_ControlPanel_LV_Colors.UpdateProps() ; sync LV info to the CLV
 					return Gui_ConflictSolver_Status
 				}
 				else if !Gui_ConflictSolver_Status
 					break
 
 			}
-			Gui_ControlPanel.Show("Center")
+			Gui_ControlPanel.Show()
+			Gui_ControlPanel_LV_Colors.UpdateProps() ; sync LV info to the CLV
 			Loop Gui_ConflictSolver_DuplicateLV.GetCount()
 			{
 				Key := Gui_ConflictSolver_DuplicateLV.GetText(A_Index,1)
@@ -830,14 +852,16 @@ Close this Window once all rows are marked as with green color.
 				sleep 1
 				if (Gui_ConflictSolver_Status == -1)
 				{
-					Gui_ControlPanel.Show("Center")
+					Gui_ControlPanel.Show()
+					Gui_ControlPanel_LV_Colors.UpdateProps() ; sync LV info to the CLV
 					return Gui_ConflictSolver_Status
 				}
 				else if !Gui_ConflictSolver_Status
 					break
 
 			}
-			Gui_ControlPanel.Show("Center")
+			Gui_ControlPanel.Show()
+			Gui_ControlPanel_LV_Colors.UpdateProps() ; sync LV info to the CLV
 			Loop Gui_ConflictSolver_OverlapLV.GetCount()
 			{
 				if (Gui_ConflictSolver_OverlapLV.GetNext(A_Index-1,"C") == A_Index)
